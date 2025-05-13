@@ -1,0 +1,45 @@
+Assumptions,Units,Baseline Jet,Alternate Turboprop
+PlaneType,,Jet transport,Twin turboprop
+Regulations,,FAR25 (Commercial),FAR25 (Commercial)
+Engine Type,,Jet,Turboprop
+Engine Bypass Ratio,,10,
+Engine Propeller Type,,,Fixed Speed
+Engine Propeller Efficiency,,,0.8
+Engine Propeller Disc Load,hp/ft^2,,200
+Swet/Sref,,5,Baseline Jet
+Wing AR,,10,Baseline Jet
+Oswald Efficiency,,0.8,Baseline Jet
+Wing Oswald Efficiency Takeoff Penalty,,-0.05,Baseline Jet
+Wing Oswald Efficiency Landing Gear Penalty,,-0.05,Baseline Jet
+Wing Oswald Efficiency Landing Penalty,,-0.1,Baseline Jet
+Wing CLmax,,1.5,Baseline Jet
+Wing CLmax Takeoff Flaps,,0.2,Baseline Jet
+Wing CLmax Landing Flaps,,0.5,Baseline Jet
+Wing CD0 Takeoff Penalty,,0.02,Baseline Jet
+Wing CD0 Landing Gear Penalty,,0.02,Baseline Jet
+Wing CD0 Landing Penalty,,0.07,Baseline Jet
+Wing Airfoil,,NACA651412,Baseline Jet
+Wing Dihedral,degrees,2,Baseline Jet
+Wing Sweep,degrees,10,Baseline Jet
+Wing Taper Ratio,,OPT;Wing Taper Ratio;0;1,Baseline Jet
+Wing Setting Angle,degrees,2,Baseline Jet
+Wing Twist Angle,degrees,0,Baseline Jet
+Wing MAC Location (Relative to Fuselage Length),,0.5,Baseline Jet
+"Wing Root Chord Location (Relative to Fuselage Centerline, Normalised by Radius)",,-0.3,Baseline Jet
+HT AR,,5,Baseline Jet
+HT Airfoil,,NACA0012,Baseline Jet
+HT Dihedral,degrees,0,Baseline Jet
+HT Sweep,degrees,30,Baseline Jet
+HT Taper Ratio,,0.5,Baseline Jet
+HT Setting Angle,degrees,0,Baseline Jet
+HT Twist Angle,degrees,0,Baseline Jet
+HT MAC Location (Relative to Fuselage Length),,1,Baseline Jet
+HT Root Chord Location (Relative to Span of VT),,0,Baseline Jet
+VT AR,,1.2,Baseline Jet
+VT Airfoil,,NACA0012,Baseline Jet
+VT Dihedral,degrees,0,Baseline Jet
+VT Sweep,degrees,30,Baseline Jet
+VT Taper Ratio,,0.6,Baseline Jet
+VT Setting Angle,degrees,0,Baseline Jet
+VT Twist Angle,degrees,0,Baseline Jet
+VT MAC Location (Relative to Fuselage Length),,1,Baseline Jet

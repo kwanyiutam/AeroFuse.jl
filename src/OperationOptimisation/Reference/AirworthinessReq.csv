@@ -1,0 +1,20 @@
+Assumptions,Units,Variable Type,"FAR23 (Civil, General)","FAR23 (Civil, Commuter)",FAR25 (Commercial),MIL-C5011A (Military)
+Max MTOW,lb,Float64,12500,19000,,
+Min Engines,,Int,1,2,2,1
+Types of Engine,,String,All,Propeller,All,All
+Max Altitude,ft,Float64,25000,25000,,
+Max Passenger,,Int,10,19,,
+Min Flight Crew,,Int,1,2,2,0
+Takeoff Velocity Relative to Stall,,Float64,1.1,1.1,1.1,1.1
+Climbing Velocity Relative to Stall,,Float64,1.2,1.2,1.2,1.2
+Takeoff Distance Multiplier,,Float64,1,1,1.15,1
+Takeoff Obstacle,ft,Float64,50,35,35,50
+BFL Consideration,,Bool,FALSE,FALSE,TRUE,FALSE
+Takeoff Friction,,Float64,,,,0.025
+Approach Velocity Relative to Stall,,Float64,1.3,1.3,1.3,1.2
+Touchdown Velocity Relative to Stall,,Float64,1.15,1.15,1.15,1.1
+Landing Distance Multiplier,,Float64,1,1,1.666666667,1
+Braking Coefficient,,Float64,,,,0.3
+Climb Rate AEO,ft/minute,Float64,300,300,,500
+Climb Rate OEI,ft/minute,Float64,,,,100
+Climb Gradient,,String,,,FAR25,

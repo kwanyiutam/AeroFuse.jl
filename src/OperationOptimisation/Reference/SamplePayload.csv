@@ -1,0 +1,19 @@
+Assumptions,Units,Value
+Passengers,,DES;Number of Passengers;50;600
+Cargo,kg,0
+Droppable Payload,kg,0
+Human Weight,kg,80
+Baggage Weight,kg,10
+Baggage Packing Density,kg/m^3,200
+Cargo Packing Density,kg/m^3,160
+Cargo Bay Height,inch,64
+Seat Pitch,inch,28
+Seat Width 1 Pax,inch,20.5
+Seat Width 2 Pax,inch,39
+Seat Width 3 Pax,inch,57
+Aisle Width,mm,381
+Head Room,cm,195
+Fuselage Wall Thickness,inch,4
+Cross Aisle per 10,m,1
+Lavatories per 50,m,1
+Galley,ft^3,2

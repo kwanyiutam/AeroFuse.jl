@@ -1,0 +1,11 @@
+Data,Path
+PlaneRef,./Reference/PlaneReference.csv
+Regulations,./Reference/AirworthinessReq.csv
+Runway,./Reference/RunwayCondition.csv
+JetEngine,./Reference/JetEngineData.csv
+Cost,./Reference/CostModel.csv
+Inflation,./Reference/Inflation.csv
+SampleMission,./Reference/SampleMission.csv
+SampleAircraft,./Reference/SampleAircraft.csv
+SamplePayload,./Reference/SamplePayload.csv
+Assumptions,./Reference/AssumptionList.csv

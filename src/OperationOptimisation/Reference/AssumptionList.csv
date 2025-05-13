@@ -1,0 +1,74 @@
+Assumptions,Category,Units,Logic,Mandatory,Variable Type,Append
+PlaneType,Aircraft,,Data:PlaneRef,TRUE,String,Jet transport
+Regulations,Aircraft,,Data:Regulations,TRUE,String,FAR25 (Commercial)
+Engine Type,Aircraft,,"Match:""(?i)\b(Jet|Turboprop|Propeller)\b""",TRUE,String,Jet
+Engine Bypass Ratio,Aircraft,,"Req:(""Engine Type"",""(?i)\b(Jet)\b"");>=0",FALSE,Float64,10
+Engine Propeller Type,Aircraft,,"Req:(""Engine Type"",""(?i)\b(Turboprop|Propeller)\b"")",FALSE,String,
+Engine Propeller Efficiency,Aircraft,,"Req:(""Engine Type"",""(?i)\b(Turboprop|Propeller)\b"");>=0;<=1",FALSE,Float64,
+Engine Propeller Disc Load,Aircraft,hp/ft^2,"Req:(""Engine Type"",""(?i)\b(Turboprop|Propeller)\b"");>=0",FALSE,Float64,
+Swet/Sref,Aircraft,,>=2,TRUE,Float64,5
+Wing AR,Aircraft,,>=0,TRUE,Float64,10
+Oswald Efficiency,Aircraft,,>=0;<=1,TRUE,Float64,0.8
+Wing Oswald Efficiency Takeoff Penalty,Aircraft,,,TRUE,Float64,-0.05
+Wing Oswald Efficiency Landing Gear Penalty,Aircraft,,,TRUE,Float64,-0.05
+Wing Oswald Efficiency Landing Penalty,Aircraft,,,TRUE,Float64,-0.1
+Wing CLmax,Aircraft,,>=0,TRUE,Float64,1.5
+Wing CLmax Takeoff Flaps,Aircraft,,,TRUE,Float64,0.2
+Wing CLmax Landing Flaps,Aircraft,,,TRUE,Float64,0.5
+Wing CD0 Takeoff Penalty,Aircraft,,,TRUE,Float64,0.02
+Wing CD0 Landing Gear Penalty,Aircraft,,,TRUE,Float64,0.02
+Wing CD0 Landing Penalty,Aircraft,,,TRUE,Float64,0.07
+Wing Airfoil,Aircraft,,AirfoilData,TRUE,String,NACA651412
+Wing Dihedral,Aircraft,degrees,,TRUE,Float64,2
+Wing Sweep,Aircraft,degrees,,TRUE,Float64,10
+Wing Taper Ratio,Aircraft,,>=0,TRUE,Float64,OPT;Wing Taper Ratio;0;1
+Wing Setting Angle,Aircraft,degrees,,TRUE,Float64,2
+Wing Twist Angle,Aircraft,degrees,,TRUE,Float64,0
+Wing MAC Location (Relative to Fuselage Length),Aircraft,,>=0,TRUE,Float64,0.5
+"Wing Root Chord Location (Relative to Fuselage Centerline, Normalised by Radius)",Aircraft,,>=-1;<=1,TRUE,Float64,-0.3
+HT AR,Aircraft,,>=0,TRUE,Float64,5
+HT Airfoil,Aircraft,,AirfoilData,TRUE,String,NACA0012
+HT Dihedral,Aircraft,degrees,,TRUE,Float64,0
+HT Sweep,Aircraft,degrees,,TRUE,Float64,30
+HT Taper Ratio,Aircraft,,>=0,TRUE,Float64,0.5
+HT Setting Angle,Aircraft,degrees,,TRUE,Float64,0
+HT Twist Angle,Aircraft,degrees,,TRUE,Float64,0
+HT MAC Location (Relative to Fuselage Length),Aircraft,,>=0,TRUE,Float64,1
+HT Root Chord Location (Relative to Span of VT),Aircraft,,>=0;<=1,TRUE,Float64,0
+VT AR,Aircraft,,>=0,TRUE,Float64,1.2
+VT Airfoil,Aircraft,,AirfoilData,TRUE,String,NACA0012
+VT Dihedral,Aircraft,degrees,,TRUE,Float64,0
+VT Sweep,Aircraft,degrees,,TRUE,Float64,30
+VT Taper Ratio,Aircraft,,>=0,TRUE,Float64,0.6
+VT Setting Angle,Aircraft,degrees,,TRUE,Float64,0
+VT Twist Angle,Aircraft,degrees,,TRUE,Float64,0
+VT MAC Location (Relative to Fuselage Length),Aircraft,,>=0,TRUE,Float64,1
+Passengers,Payload,,>=0,TRUE,Int,DES;Number of Passengers;50;600
+Cargo,Payload,kg,>=0,TRUE,Float64,0
+Droppable Payload,Payload,kg,>=0,TRUE,Float64,0
+Human Weight,Payload,kg,>=0,TRUE,Float64,80
+Baggage Weight,Payload,kg,>=0,TRUE,Float64,10
+Baggage Packing Density,Payload,kg/m^3,>=0,TRUE,Float64,200
+Cargo Packing Density,Payload,kg/m^3,>=0,TRUE,Float64,160
+Cargo Bay Height,Payload,inch,>=0,TRUE,Float64,64
+Seat Pitch,Payload,inch,>=0,TRUE,Float64,28
+Seat Width 1 Pax,Payload,inch,>=0,TRUE,Float64,20.5
+Seat Width 2 Pax,Payload,inch,>=0,TRUE,Float64,39
+Seat Width 3 Pax,Payload,inch,>=0,TRUE,Float64,57
+Aisle Width,Payload,mm,>=0,TRUE,Float64,381
+Head Room,Payload,cm,>=0,TRUE,Float64,195
+Fuselage Wall Thickness,Payload,inch,>=0,TRUE,Float64,4
+Cross Aisle per 10,Payload,m,>=0,TRUE,Float64,1
+Lavatories per 50,Payload,m,>=0,TRUE,Float64,1
+Galley,Payload,ft^3,>=0,TRUE,Float64,2
+Stage,Mission,,"Match:""(?i)\b(Takeoff|Climb|Cruise|Loiter|Descend|Landing)\b""",TRUE,String,0
+Velocity,Mission,knots,"Req:(""Stage"",""(?i)\b(Climb|Cruise|Loiter|Descend)\b"");>=0",FALSE,Float64,0
+Altitude,Mission,ft,>=0,TRUE,Float64,0
+Distance,Mission,km,"Req:(""Stage"",""(?i)\b(Takeoff|Cruise|Landing)\b"");>=0",FALSE,Float64,0
+Duration,Mission,minute,"Req:(""Stage"",""(?i)\b(Loiter)\b"");>=0",FALSE,Float64,0
+Gradient,Mission,%,"Req:(""Stage"",""(?i)\b(Climb|Descend)\b"")",FALSE,Float64,0
+Payload_Drop,Mission,kg,>=0,FALSE,Float64,0
+Available_Engines,Mission,,>=0,TRUE,Int,0
+Runway,Mission,,"Req:(""Stage"",""(?i)\b(Takeoff|Landing)\b"")",FALSE,String,0
+Reverser,Mission,,"Req:(""Stage"",""(?i)\b(Landing)\b"")",FALSE,Bool,0
+Max_Mass_Ratio,Mission,,"Req:(""Stage"",""(?i)\b(Landing)\b"");>=0;<=1",FALSE,Float64,0

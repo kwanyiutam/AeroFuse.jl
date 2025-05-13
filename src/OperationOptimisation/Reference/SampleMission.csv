@@ -1,0 +1,12 @@
+Assumptions,Units,Takeoff,Initial Climb,Cruise to Destination,Descend to Destination,Climb to Alternate,Cruise to Alternate,Descend to Loiter,Loiter,Descend to Alternate,Landing
+Stage,,Takeoff,Climb,Cruise,Descend,Climb,Cruise,Descend,Loiter,Descend,Landing
+Velocity,knots,,250,MIN_COST;Cruise Velocity;1;500,250,250,MIN_FUEL;Alternate Velocity;1;500,250,MIN_FUEL;Loiter Velocity;1;500,250,
+Altitude,ft,0,Cruise to Destination,35000,0,Cruise to Alternate,35000,Loiter,10000,Landing,0
+Distance,km,DES;Takeoff Distance;1;2,,DES;Cruise Range;1000;5000,,,500,,,,DES;Landing Distance;1;2
+Duration,minute,,,,,,,,30,,
+Gradient,,,2.4,,-5,2.4,,-5,,-5,
+Payload_Drop,kg,0,0,0,0,0,0,0,0,0,0
+Available_Engines,,2,2,2,2,2,2,2,2,2,2
+Runway,,Concrete,,,,,,,,,Concrete
+Reverser,,,,,,,,,,,FALSE
+Max_Mass_Ratio,,,,,,,,,,,0.85
