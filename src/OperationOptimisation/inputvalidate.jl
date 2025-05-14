@@ -312,7 +312,7 @@ function design_check(;df::DataFrame,design_param::DataFrame,location::String,N_
 
                     # Save the design, following the order: Design Parameter => Saved Location
                     # => Saved Row => Saved Column => Type => Continuous => Lower Bound => Upper Bound
-                    save_design = [data[2],location,i,col,types[idx],df[i,"Variable Type"]=="Float",lb,ub]
+                    save_design = [data[2],location,i,col,types[idx],df[i,"Variable Type"]=="Float64",lb,ub]
                     push!(design_param,save_design)
 
                     # Replace the assumption table with lower bound, just as a placeholder for now

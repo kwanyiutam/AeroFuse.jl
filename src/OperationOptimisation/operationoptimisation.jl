@@ -6,6 +6,7 @@ using ISAData
 using Unitful
 using CSV
 using DataFrames
+using QuasiMonteCarlo
 
 # Initialise the aero units
 include("aerounits.jl")
@@ -87,6 +88,25 @@ function design_init(;mission_path :: String = "Default", aircraft_path :: Strin
     df_cost = CostModel.cost_init()
 
     return (design_param,df_aircraft,N_aircraft,df_mission,N_stages,df_payload,N_payload,df_cost)
+end
+
+function sampling_points(;N_sample::Int, design_param::DataFrame)
+    design_row_idx = findall(==("Design"), design_param[:,"Type"])
+    design_names = design_param[design_row_idx,"Design Parameter"]
+    design_lb = design_param[design_row_idx,"Lower Bound"]
+    design_ub = design_param[design_row_idx,"Upper Bound"]
+    continuous_check = design_param[design_row_idx,"Continuous"]
+	sample_points = QuasiMonteCarlo.sample(N_sample, design_lb, design_ub, LatinHypercubeSample())
+
+    df_samples = DataFrame(sample_points',design_names)
+
+    for idx in 1:ncol(df_samples)
+        if continuous_check[idx] == false
+            df_samples[:,idx] = round.(Int, df_samples[:,idx])
+        end
+    end
+
+    return df_samples
 end
 
 function WS_init(;WS,velocity_list::DataFrame,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::DataFrame)
