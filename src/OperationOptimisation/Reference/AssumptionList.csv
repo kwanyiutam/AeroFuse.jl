@@ -2,6 +2,7 @@ Assumptions,Category,Units,Logic,Mandatory,Variable Type,Append
 PlaneType,Aircraft,,Data:PlaneRef,TRUE,String,Jet transport
 Regulations,Aircraft,,Data:Regulations,TRUE,String,FAR25 (Commercial)
 Engine Type,Aircraft,,"Match:""(?i)\b(Jet|Turboprop|Propeller)\b""",TRUE,String,Jet
+Number of Engines,Aircraft,,,TRUE,Int,2
 Engine Bypass Ratio,Aircraft,,"Req:(""Engine Type"",""(?i)\b(Jet)\b"");>=0",FALSE,Float64,10
 Engine Propeller Type,Aircraft,,"Req:(""Engine Type"",""(?i)\b(Turboprop|Propeller)\b"")",FALSE,String,
 Engine Propeller Efficiency,Aircraft,,"Req:(""Engine Type"",""(?i)\b(Turboprop|Propeller)\b"");>=0;<=1",FALSE,Float64,
@@ -66,9 +67,12 @@ Velocity,Mission,knots,"Req:(""Stage"",""(?i)\b(Climb|Cruise|Loiter|Descend)\b""
 Altitude,Mission,ft,>=0,TRUE,Float64,0
 Distance,Mission,km,"Req:(""Stage"",""(?i)\b(Takeoff|Cruise|Landing)\b"");>=0",FALSE,Float64,0
 Duration,Mission,minute,"Req:(""Stage"",""(?i)\b(Loiter)\b"");>=0",FALSE,Float64,0
+Load Factor,Mission,,"Req:(""Stage"",""(?i)\b(Climb|Cruise|Loiter|Descend)\b"")",FALSE,Float64,0
 Gradient,Mission,%,"Req:(""Stage"",""(?i)\b(Climb|Descend)\b"")",FALSE,Float64,0
 Payload_Drop,Mission,kg,>=0,FALSE,Float64,0
 Available_Engines,Mission,,>=0,TRUE,Int,0
 Runway,Mission,,"Req:(""Stage"",""(?i)\b(Takeoff|Landing)\b"")",FALSE,String,0
 Reverser,Mission,,"Req:(""Stage"",""(?i)\b(Landing)\b"")",FALSE,Bool,0
 Max_Mass_Ratio,Mission,,"Req:(""Stage"",""(?i)\b(Landing)\b"");>=0;<=1",FALSE,Float64,0
+Maximum Acceleration,Mission,m/s^2,"Req:(""Stage"",""(?i)\b(Climb|Cruise|Loiter|Descend)\b"")",FALSE,Float64,0
+Engine Efficiency Scaling,Mission,,"Req:(""Stage"",""(?i)\b(Climb|Cruise|Loiter|Descend)\b"");>=0;<=1",FALSE,Float64,0

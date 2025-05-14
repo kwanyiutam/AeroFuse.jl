@@ -6,8 +6,11 @@ using LsqFit
 using Unitful
 using ISAData
 
-using Optimization
-using ForwardDiff
+#using Optimization
+#using OptimizationBBO
+#using ForwardDiff
+
+#using NonlinearSolve
 
 # Initialise the aero units
 include("aerounits.jl")
@@ -66,7 +69,7 @@ function define_aircraft_properties(;df_aircraft::DataFrame,N_aircraft::Int)
             SFC_cruise = SFC_cruise / 1000 * units # Convert from mg to g
             SFC_loiter = SFC_loiter / 1000 * units # Convert from mg to g
         else
-            units = u"g / N / s"
+            units = u"g / W / s"
             prop_type = df_aircraft[findfirst(==("Engine Propeller Type"),df_aircraft[:,1]),col]
             μ_prop = df_aircraft[findfirst(==("Engine Propeller Efficiency"),df_aircraft[:,1]),col]
 
@@ -153,59 +156,63 @@ function update_init_design(;df_aircraft::DataFrame,aircraft_idx::Int,df_mission
     return (df_aircraft,df_mission,df_payload)
 end
 
-function weight_converge(;W_0::Float64, W_payload::Float64, fuel_ratio::Float64, A::Float64, C::Float64)
-    W_0 = ustrip(uconvert(u"kg", W_0))
+function weight_converge(;W_0_init, W_payload, fuel_ratio, A, C)
+    W_0_init = ustrip(uconvert(u"kg", W_0_init))
     W_payload = ustrip(uconvert(u"kg", W_payload))
 
-    W_e = NaN
+    W_e_W_0 = NaN
     W_0_prev = 0.0
-    max_iter = 50
+    W_0 = W_0_init
+    max_iter = 100
     iter = 1
 
     while abs(W_0-W_0_prev) > 0.01
         # Empty weight Estimate
-        W_e = A*(W_0^C)
+        W_e_W_0 = A*(W_0^C)
         W_0_prev = W_0
 
         # New guess for MTOW
-        W_0 = (W_payload) / (1 - fuel_ratio - W_e)
+        W_0 = (W_payload) / (1 - fuel_ratio - W_e_W_0)
 
         iter = iter + 1
 
         # Checks to ensure the loop will not run forever
         if W_0 < 0
-            W_0 = NaN
-            W_e = NaN
-            @warn "MTOW returned a negative value, so this is invalid!"
+            # Return NaN
+            return (NaN, NaN)
+            #@warn "MTOW returned a negative value, so this is invalid!"
             break
         elseif iter >= max_iter
-            @warn "Maximum iteration $max_iter was reached! Proceed with caution as the results may not be fully converged."
+            #@warn "Maximum iteration $max_iter was reached! Proceed with caution as the results may not be fully converged."
             break
         end
     end
 
+    W_0 = W_0*u"kg"
+    W_e = W_e_W_0 * W_0
+
     return(W_0, W_e)
 end
 
-function fuel_weight_fractions(;stage::String,engine_type::String,V_md::Float64,V_bar::Float64, LD_max::Float64,SFC_cruise::Float64,SFC_loiter::Float64, endurance::Float64 = 0.0, range::Float64 = 0.0)
+function fuel_weight_fractions(;stage::String,engine_type::String,V_md,V_bar,LD_max,SFC_cruise,SFC_loiter,endurance = 0.0, range= 0.0)
     if engine_type != "Jet"
-        SFC = SFC * V_bar * V_md
+        SFC_cruise = upreferred(SFC_cruise * V_bar * V_md)
+        SFC_loiter = upreferred(SFC_loiter * V_bar * V_md)
     end
 
     g = uconvert(u"m/s^2", 1*u"ge") # Gravitational acceleration constant
-
 
     if stage == "Takeoff"
         fraction = 0.97
     elseif stage == "Climb"
         fraction = 0.985
     elseif stage == "Cruise"
-        @assert range > 0 "Range must be given!"
+        @assert ustrip(range) > 0.0 "Range must be given!"
         # Convert units
         range = uconvert(u"m", range)
-        fraction = exp(-(endurance * SFC_cruise * g * (V_bar + V_bar^-3)) / (LD_max * V_md * 2))
+        fraction = exp(-(range * SFC_cruise * g * (V_bar + V_bar^-3)) / (LD_max * V_md * 2))
     elseif stage == "Loiter"
-        @assert endurance > 0 "Endurance must be given!"
+        @assert ustrip(endurance) > 0.0 "Endurance must be given!"
         # Convert units
         endurance = uconvert(u"s", endurance)
         fraction = exp(-(endurance * SFC_loiter * g * (V_bar^2 + V_bar^-2)) / (LD_max * 2))
@@ -217,40 +224,27 @@ function fuel_weight_fractions(;stage::String,engine_type::String,V_md::Float64,
     return fraction
 end
 
-function fuel_ratio(;df_WS::DataFrame,WS_idx::Int,min_fuel_vel::DataFrame,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int)
+function fuel_ratio(;df_WS::DataFrame,WS_idx::Int,min_fuel_vel::DataFrame,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,save_info::Bool = false)
     # Trapped fuel ratio (2%)
     trapped_fuel = 1.02
 
     # Get the minimum fuel columns
     min_fuel_stages = min_fuel_vel[:,"Saved Column"]
-
-    # Append new row/update row so that takeoff is mass ratio of missing (to be added in the for-loop)
-    df_mission = InputValidate.df_update_or_append(df=df_mission,label="Mass_Ratio",value=missing,N_config=N_stages,col=ncol(df_mission)-N_stages+1)
-    # Alpha is defined as the ending weight fractions
-    df_mission = InputValidate.df_update_or_append(df=df_mission,label="Cumulative_Mass_Ratio",value=missing,N_config=N_stages,col=ncol(df_mission)-N_stages+1)
-
     V_imd_MTOW = df_WS[WS_idx, "V_imd_MTOW"]
 
     engine_type = df_aircraft[findfirst(==("Engine Type"),df_aircraft[:,1]),aircraft_idx]
     LD_max = df_aircraft[findfirst(==("LD_max"),df_aircraft[:,1]),aircraft_idx]
     SFC_cruise = df_aircraft[findfirst(==("SFC_cruise"),df_aircraft[:,1]),aircraft_idx]
     SFC_loiter = df_aircraft[findfirst(==("SFC_loiter"),df_aircraft[:,1]),aircraft_idx]
+    cumulative_weight_fraction = 1
 
     # For each mission stages
     for col in (ncol(df_mission)-N_stages+1):ncol(df_mission)
         stage = df_mission[findfirst(==("Stage"),df_mission[:,1]),col]
         σ = df_mission[findfirst(==("σ"),df_mission[:,1]),col]
-        
-        # Define alpha - the cumulative weight fractions - for calculations
-        if col == ncol(df_mission)-N_stages+1
-            α = 1
-        else
-            α = df_mission[findfirst(==("Cumulative_Mass_Ratio"),df_mission[:,1]),col-1]
-        end
 
         # Get the minimum drag speed
-        V_md = V_imd_MTOW*sqrt(α/σ)
-        print(V_md)
+        V_md = V_imd_MTOW*sqrt(cumulative_weight_fraction/σ)
 
         if col in min_fuel_stages
             if (engine_type == "Jet" && stage == "Cruise") || (engine_type in ["Turboprop","Propeller"] && stage == "Loiter")
@@ -266,8 +260,8 @@ function fuel_ratio(;df_WS::DataFrame,WS_idx::Int,min_fuel_vel::DataFrame,df_air
 
         V_bar = V / V_md
 
-        endurnace = 0
-        range = 0
+        endurance = 0.0
+        range = 0.0
 
         if stage == "Cruise"
             range = df_mission[findfirst(==("Distance"),df_mission[:,1]),col]
@@ -275,68 +269,99 @@ function fuel_ratio(;df_WS::DataFrame,WS_idx::Int,min_fuel_vel::DataFrame,df_air
             endurance = df_mission[findfirst(==("Duration"),df_mission[:,1]),col]
         end
 
-        fraction = fuel_weight_fractions(stage=stage,engine_type=engine_type,V_md=V_md,V_bar=V_bar,LD_max=LD_max,SFC_cruise=SFC_cruise,SFC_loiter=SFC_loiter,endurance=endurance,range=range)
-        df_mission = InputValidate.df_update_or_append(df=df_mission,label="Mass_Ratio",value=fraction,N_config=N_stages,col=col)
+        fraction = fuel_weight_fractions(stage=stage,engine_type=String(engine_type),V_md=V_md,V_bar=V_bar,LD_max=LD_max,SFC_cruise=SFC_cruise,SFC_loiter=SFC_loiter,endurance=endurance,range=range)
 
         if col == ncol(df_mission)-N_stages+1
-            α = fraction
+            cumulative_weight_fraction = fraction
         else
-            α = df_mission[findfirst(==("Cumulative_Mass_Ratio"),df_mission[:,1]),col-1] * fraction
+            cumulative_weight_fraction *= fraction
         end
 
-        df_mission = InputValidate.df_update_or_append(df=df_mission,label="Cumulative_Mass_Ratio",value=α,N_config=N_stages,col=col)
+        if save_info == true
+            df_mission = InputValidate.df_update_or_append(df=df_mission,label="Fuel Fraction",value=fraction,N_config=N_stages,col=col)
+        end
+
+        if stage != "Loiter"
+            duration = 15*u"minute" # For Takeoff and Landing
+
+            if stage in ["Climb", "Descend"]
+                duration = 30*u"minute"
+            elseif stage == "Cruise"
+                # Convert to time
+                duration = uconvert(u"minute", range / V)
+            end
+
+            df_mission = InputValidate.df_update_or_append(df=df_mission,label="Duration",value=duration,N_config=N_stages,col=col)
+        end
     end
 
     # Final fuel ratio * trapped fuel
-    final_fuel_ratio = (1-df_mission[findfirst(==("Cumulative_Mass_Ratio"),df_mission[:,1]),ncol(df_mission)])*trapped_fuel
+    final_fuel_ratio = (1-cumulative_weight_fraction)*trapped_fuel
 
     return (final_fuel_ratio,df_mission)
 end
 
-function opt_basic_cost(x, p)
+function basic_cost_calc(x, p, save_info::Bool = false)
     # Expand the parameters of p
     df_WS = p.df_WS
     WS_idx = p.WS_idx
-    aircraft_idx = p.aircraft_idx
-    N_stages = p.N_stages
-    payload_idx = p.payload_idx
     min_cost_vel = p.min_cost_vel
     min_fuel_vel = p.min_fuel_vel
     df_aircraft = p.df_aircraft
+    N_aircraft = p.N_aircraft
+    aircraft_idx = p.aircraft_idx
     df_mission = p.df_mission
+    N_stages = p.N_stages
     df_payload = p.df_payload
-    df_cost = p.df_cost
+    payload_idx = p.payload_idx
+    df_cost_model = p.df_cost_model
 
     # Load guesses of x into the dataframe
-    (df_aircraft,df_mission,df_payload) = InputValidate.update_df_with_design(design_list=min_cost_vel,parameter=min_cost_vel[:,"Design Parameter"],value=x,df_aircraft=df_aircraft,df_mission=df_mission,df_payload=df_payload)
+    for i in eachindex(x)
+        (df_aircraft,df_mission,df_payload) = InputValidate.update_df_with_design(design_list=min_cost_vel,parameter=min_cost_vel[i,"Design Parameter"],value=x[i],df_aircraft=df_aircraft,df_mission=df_mission,df_payload=df_payload)
+    end
 
     # Calculate fuel ratios
-    (final_fuel_ratio,df_mission) = fuel_ratio(df_WS=df_WS,WS_idx=WS_idx,min_fuel_vel=min_fuel_vel,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
+    (final_fuel_ratio,df_mission) = fuel_ratio(df_WS=df_WS,WS_idx=WS_idx,min_fuel_vel=min_fuel_vel,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,save_info=save_info)
 
     # Get key values
     W_payload = df_payload[findfirst(==("Payload Weight"),df_payload[:,1]),payload_idx]
     A = df_aircraft[findfirst(==("A"),df_aircraft[:,1]),aircraft_idx]
-    C = df_aircraft[findfirst(==("C"),v[:,1]),aircraft_idx]
+    C = df_aircraft[findfirst(==("C"),df_aircraft[:,1]),aircraft_idx]
 
     # Converge weight, starting with a random weight
-    (MTOW, empty_weight) = weight_converge(W_0 = 100000*u"kg", W_payload = W_payload, fuel_ratio=final_fuel_ratio, A=A, C=C)
+    (MTOW, empty_weight) = weight_converge(W_0_init = 1000000*u"kg", W_payload = W_payload, fuel_ratio=final_fuel_ratio, A=A, C=C)
 
-    (total_cost, _) = cost_calc(df_cost = df_cost, model = "Basic")
+    if isnan(MTOW)
+        return (NaN, NaN, df_aircraft, df_mission, df_payload)
+    end
+
+    # Calculate the fuel weight
+    fuel_weight = final_fuel_ratio * MTOW
+
+    # Append the weights into the aircraft data
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="MTOW",value=MTOW,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Empty Weight",value=empty_weight,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Fuel Weight",value=fuel_weight,N_config=N_aircraft,col=aircraft_idx)
+
+    (total_cost, df_cost_breakdown) = CostModel.cost_calc(df_cost_model = df_cost_model, df_aircraft = df_aircraft, aircraft_idx = aircraft_idx, df_mission = df_mission, N_stages = N_stages, df_payload = df_payload, payload_idx = payload_idx)
+
+    return (total_cost, df_cost_breakdown, df_aircraft, df_mission, df_payload)
 end
 
-function velocity_optimise_main(;df_WS::DataFrame,velocity_list::DataFrame,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,payload_idx::Int,df_cost::DataFrame)
-    #V_imd = sqrt.(2*α.*WS./ρ_0).*((1/(pi*aircraft.AR*aircraft.e*aircraft.CD0)).^0.25)
-    #V_md = V_imd ./ sqrt(σ)
+function opt_basic_cost(x, p)
+    (total_cost, _, _, _, _) = basic_cost_calc(x, p)
 
-    # Get the minimum drag speed for each wing loading
-    #df_WS[:,"V_md"] = df_WS[:,"WS"]
+    return total_cost
+end
 
+function velocity_optimise_main(;df_WS::DataFrame,velocity_list::DataFrame,df_aircraft::DataFrame,N_aircraft::Int, aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,payload_idx::Int,df_cost::DataFrame)
     # Get the velocities
     min_fuel_vel = velocity_list[findall(value -> occursin(Regex("(?i)Minimum Fuel Velocity"),value),velocity_list[:,:Type]),:]
     min_cost_vel = velocity_list[findall(value -> occursin(Regex("(?i)Minimum Cost Velocity"),value),velocity_list[:,:Type]),:]
 
     # Optimisation Parameters
-    x0 = [250.0, 250.0] # Initial guesses --> Just random numbers for now
+    #x0 = fill(300.0, nrow(min_cost_vel)) # Initial guesses --> Just random numbers for now
     lb = min_cost_vel[:,"Lower Bound"]
     ub = min_cost_vel[:,"Upper Bound"]
 
@@ -344,16 +369,80 @@ function velocity_optimise_main(;df_WS::DataFrame,velocity_list::DataFrame,df_ai
      
     for idx in 1:nrow(df_WS)
         # Hyperparameters for optimisation
-        p = (df_WS = df_WS, WS_idx = idx, min_cost_vel = min_cost_vel, min_fuel_vel = min_fuel_vel, df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,payload_idx=payload_idx)
+        p = (df_WS = df_WS, WS_idx = idx, min_cost_vel = min_cost_vel, min_fuel_vel = min_fuel_vel, df_aircraft=df_aircraft, N_aircraft = N_aircraft, aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,payload_idx=payload_idx,df_cost_model=df_cost_model)
 
+        ### Old Optimisation attempt, did not go well!
         # Problem construction
-        #optprob = OptimizationFunction(opt_basic_cost, Optimization.AutoForwardDiff())
+        #optprob = OptimizationFunction(opt_basic_cost)
         #prob = OptimizationProblem(optprob, x0, p, lb = lb, ub = ub)
 
         ## Choose optimizer
-        #solution = solve(prob, BFGS())
+        #solution = solve(prob, OptimizationBBO.BBO_adaptive_de_rand_1_bin_radiuslimited(), maxiters = 100000, maxtime = 1000.0)
 
-        #print(solution)
+        #if idx == nrow(df_WS)
+            #print(solution)
+        #end
+
+        # Cannot be smaller than stall speed
+        V_stall = df_WS[idx, "V_stall_MTOW_clean"]
+
+        V_save = fill(300.0, nrow(min_cost_vel))
+
+        for V_idx in 1:nrow(min_cost_vel)
+            # Get the minimum and maximum velocities
+            V_min = min(ustrip(V_stall),lb[V_idx])
+            V_max = ub[V_idx]
+
+            V_iterate = LinRange(V_min, V_max, 500)
+
+            min_V_idx = 1
+            min_cost = maxintfloat(Float64)
+
+            for idx in eachindex(V_iterate)
+                V_save[V_idx] = V_iterate[idx]
+
+                (total_cost, _, _, _, _) = basic_cost_calc(V_save, p)
+
+                if isnan(total_cost)
+                    continue
+                elseif min_cost > total_cost
+                    min_cost = total_cost
+                    min_V_idx = idx
+                end
+            end
+
+            # Save the minimum speed and continue to iterate
+            global V_save[V_idx] = V_iterate[min_V_idx]
+        end
+
+        # Final iteration with the minimum cost speed optimised
+        (total_cost, df_cost_breakdown, df_aircraft, df_mission, df_payload) = basic_cost_calc(V_save, p, true)
+
+        for vel in 1:nrow(velocity_list)
+            name = velocity_list[vel, "Design Parameter"]
+            row = velocity_list[vel, "Saved Row"]
+            col = velocity_list[vel, "Saved Column"]
+            df_WS[idx,name] = df_mission[row,col]
+        end
+
+        MTOW = df_aircraft[findfirst(==("MTOW"),df_aircraft[:,1]),aircraft_idx]
+
+        df_WS[idx, "MTOW"]  = MTOW
+        df_WS[idx, "Empty Weight"]  = df_aircraft[findfirst(==("Empty Weight"),df_aircraft[:,1]),aircraft_idx]
+        df_WS[idx, "Fuel Weight"]  = df_aircraft[findfirst(==("Fuel Weight"),df_aircraft[:,1]),aircraft_idx]
+        df_WS[idx, "Total Cost"]  = total_cost
+        df_WS[idx, "Fuel Cost"]  = df_cost_breakdown[findfirst(==("Fuel"),df_cost_breakdown[:,1]),"Cost (USD)"]
+        df_WS[idx, "Cabin Crew Cost"]  = df_cost_breakdown[findfirst(==("Cabin Crew"),df_cost_breakdown[:,1]),"Cost (USD)"]
+        df_WS[idx, "Flight Crew Cost"]  = df_cost_breakdown[findfirst(==("Flight Crew"),df_cost_breakdown[:,1]),"Cost (USD)"]
+
+        α = 1
+        for col in ncol(df_mission)-N_stages+1:ncol(df_mission)
+            fuel_fraction = df_mission[findfirst(==("Fuel Fraction"),df_mission[:,1]),col]
+            dropped_payload = df_mission[findfirst(==("Payload_Drop"),df_mission[:,1]),col]
+            drop_ratio = 1 - (dropped_payload / MTOW)
+            α = α*fuel_fraction*drop_ratio
+            df_mission = InputValidate.df_update_or_append(df=df_mission,label="Cumulative Weight Fraction",value=α,N_config=N_stages,col=col)
+        end
     end
 
     return (df_WS, df_mission)

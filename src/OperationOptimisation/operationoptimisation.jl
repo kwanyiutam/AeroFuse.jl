@@ -23,6 +23,9 @@ include("costmodel.jl")
 # include the InitialSizing module
 include("initialsizing.jl")
 
+# include the ConstraintDiagram module
+include("constraintdiagram.jl")
+
 """
     `design_init` - A function which initiates the design variables
 
@@ -86,25 +89,49 @@ function design_init(;mission_path :: String = "Default", aircraft_path :: Strin
     return (design_param,df_aircraft,N_aircraft,df_mission,N_stages,df_payload,N_payload,df_cost)
 end
 
+function WS_init(;WS,velocity_list::DataFrame,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::DataFrame)
+    # Create a Wing loading dataframe, filled with just WS for now
+    df_WS = DataFrame(WS = WS)
+    (ρ_0,_,_,_) = ISAdata(0*u"m")
+
+    # Fill it with the design velocity as two other columns
+    vel_unit = AeroUnits.convert_to_unit(df_mission[findfirst(==("Velocity"),df_mission[:,1]),"Units"])
+    for i in 1:nrow(velocity_list)
+        df_WS[!, velocity_list[i,"Design Parameter"]] = fill(0.0*vel_unit, length(WS))
+    end
+
+    df_WS[!, "MTOW"]  = fill(0.0*u"kg", length(WS))
+    df_WS[!, "Empty Weight"]  = fill(0.0*u"kg", length(WS))
+    df_WS[!, "Fuel Weight"]  = fill(0.0*u"kg", length(WS))
+    df_WS[!, "Total Cost"]  = fill(0.0, length(WS))
+    df_WS[!, "Fuel Cost"]  = fill(0.0, length(WS))
+    df_WS[!, "Cabin Crew Cost"]  = fill(0.0, length(WS))
+    df_WS[!, "Flight Crew Cost"]  = fill(0.0, length(WS))
+
+    # Define key variables
+    AR = df_aircraft[findfirst(==("Wing AR"),df_aircraft[:,1]),aircraft_idx]
+    e = df_aircraft[findfirst(==("Oswald Efficiency"),df_aircraft[:,1]),aircraft_idx]
+    CD0 = df_aircraft[findfirst(==("CD0"),df_aircraft[:,1]),aircraft_idx]
+    CL_max = df_aircraft[findfirst(==("Wing CLmax"),df_aircraft[:,1]),aircraft_idx]
+    
+    # Update the V_imd column at MTOW
+    df_WS[!, "V_imd_MTOW"] = sqrt.(2*WS./ρ_0).*((1/(pi*AR*e*CD0)).^0.25)
+    df_WS[!, "V_stall_MTOW_clean"] = sqrt.(2*WS./(ρ_0*CL_max))
+
+    return df_WS
+end
+
 
 """
     `design_start` - A function which runs the design workflow
 
 """
-function design_start(;WS,design_param::DataFrame,df_design::DataFrame,df_aircraft::DataFrame,N_aircraft::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,df_cost::DataFrame)
+function design_start(;design_param::DataFrame,df_design::DataFrame,df_aircraft::DataFrame,N_aircraft::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,df_cost::DataFrame)
     # Get the list of design-specific parameters
     design_list = design_param[findall(==("Design"),design_param[:,:Type]),:]
 
     # Get a list of velocity
     velocity_list = design_param[findall(value -> occursin(Regex("(?i)Velocity"),value),design_param[:,:Type]),:]
-    
-    # Create a Wing loading dataframe, filled with just WS for now
-    df_WS = DataFrame(WS = WS)
-
-    # Fill it with the design velocity as two other columns
-    for i in 1:nrow(velocity_list)
-        df_WS[!, velocity_list[i,"Design Parameter"]] = fill(0.0, length(WS))
-    end
 
     # Check that the df_design inputs are complete: It should have four columns for each design-specific parameter
     if sort(lowercase.(DataFrames.names(df_design))) != sort(lowercase.(design_list[:,"Design Parameter"]))
@@ -113,19 +140,9 @@ function design_start(;WS,design_param::DataFrame,df_design::DataFrame,df_aircra
     
     # Define key variables needed for initial sizing
     df_aircraft = InitialSizing.define_aircraft_properties(df_aircraft=df_aircraft,N_aircraft=N_aircraft)
-    (ρ_0,_,_,_) = ISAdata(0*u"m")
-
 
     # For each aircraft
     for aircraft_idx in (ncol(df_aircraft)-N_aircraft+1):ncol(df_aircraft)
-        # Define key variables
-        AR = df_aircraft[findfirst(==("Wing AR"),df_aircraft[:,1]),aircraft_idx]
-        e = df_aircraft[findfirst(==("Oswald Efficiency"),df_aircraft[:,1]),aircraft_idx]
-        CD0 = df_aircraft[findfirst(==("CD0"),df_aircraft[:,1]),aircraft_idx]
-
-        # Update the V_imd column at MTOW
-        df_WS[!, "V_imd_MTOW"] = sqrt.(2*WS./ρ_0).*((1/(pi*AR*e*CD0)).^0.25)
-
         # For each specified design point
         #for aircraft_col in 5:ncol()
         for row in 1:nrow(df_design)
@@ -140,30 +157,22 @@ function design_start(;WS,design_param::DataFrame,df_design::DataFrame,df_aircra
             end
 
             (df_aircraft,df_mission,df_payload) = InitialSizing.update_init_design(df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload) 
+            
+            WS_max = ConstraintDiagram.get_max_WS(df_aircraft = df_aircraft, aircraft_idx = aircraft_idx,df_mission = df_mission)
 
             for payload_idx in (ncol(df_payload)-N_payload+1):ncol(df_payload)
-                (df_WS, df_mission) = InitialSizing.velocity_optimise_main(df_WS = df_WS,velocity_list = velocity_list,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,payload_idx=payload_idx,df_cost=df_cost)
+                # Only need to optimise at WS_max, because that is where the minimum cost is likely at (Quick mode)
+                df_WS = WS_init(WS=[WS_max],velocity_list=velocity_list,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission)
+                
+                # Get the minimum cost velocity and their respective design
+                (df_WS, df_mission) = InitialSizing.velocity_optimise_main(df_WS = df_WS,velocity_list = velocity_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,payload_idx=payload_idx,df_cost=df_cost)
+                
+                # Get the T/W ratio required
+                TW_max = ConstraintDiagram.quick_constraint(WS_max=WS_max,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
             end
         end
     end
-    print(df_WS)
 end
 
 
 end
-
-using DataFrames
-using Unitful
-using CSV
-
-# include the CostModel module
-include("costmodel.jl")
-
-
-(design_param,df_aircraft,N_aircraft,df_mission,N_stages,df_payload,N_payload,df_cost) = OperationOptimisation.design_init(aircraft_path = "bogus.csv");
-df_design = CSV.read("./Reference/SampleDesign.csv", DataFrame)
-
-WS = LinRange(1*u"kg/m/s^2", 5000*u"kg/m/s^2", 1000)
-
-CostModel.cost_model(df_cost = df_cost, model = "Basic")
-#OperationOptimisation.design_start(WS=WS,design_param=design_param,df_design=df_design,df_aircraft=df_aircraft,N_aircraft=N_aircraft,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,df_cost=df_cost)

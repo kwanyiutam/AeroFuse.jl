@@ -1,6 +1,7 @@
 Assumptions,Units,Baseline Jet,Alternate Turboprop
 PlaneType,,Jet transport,Twin turboprop
 Regulations,,FAR25 (Commercial),FAR25 (Commercial)
+Number of Engines,,2,2
 Engine Type,,Jet,Turboprop
 Engine Bypass Ratio,,10,
 Engine Propeller Type,,,Fixed Speed

@@ -18,3 +18,4 @@ Braking Coefficient,,Float64,,,,0.3
 Climb Rate AEO,ft/minute,Float64,300,300,,500
 Climb Rate OEI,ft/minute,Float64,,,,100
 Climb Gradient,,String,,,FAR25,
+Glide Slope,m,Float64,183,305,305,137
