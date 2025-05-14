@@ -159,8 +159,12 @@ function cost_calc(;df_cost_model::DataFrame, df_aircraft::DataFrame, aircraft_i
             for idx in eachindex(coefficients)
                 cost *= values[idx]^(coefficients[idx]) 
             end
+        elseif logic == "FCREW"
+            MTOW = values[findfirst(==("MTOW"), variables)]
+            time = values[findfirst(==("Cruise Time"), variables)]
+            cost = (0.000326*MTOW+653)*time
         else
-            cost = 0
+            throw(ArgumentError("Logic cannot be parsed, please double check!"))
         end
 
         df_row_idx = findfirst(==(component), df_results[:,1])
