@@ -150,12 +150,18 @@ function update_init_design(;df_aircraft::DataFrame,aircraft_idx::Int,df_mission
         (ρ,_,_,_) = ISAdata(df_mission[findfirst(==("Altitude"),df_mission[:,1]),col])
         σ = ρ / ρ_0
 
+        df_mission = InputValidate.df_update_or_append(df=df_mission,label="ρ",value=ρ,N_config=N_stages,col=col)
         df_mission = InputValidate.df_update_or_append(df=df_mission,label="σ",value=σ,N_config=N_stages,col=col)
     end
 
     return (df_aircraft,df_mission,df_payload)
 end
 
+"""
+    `weight_converge` - A function to iterate for the MTOW and empty weight for initial sizing
+
+    Returns the MTOW and empty weights
+"""
 function weight_converge(;W_0_init, W_payload, fuel_ratio, A, C)
     W_0_init = ustrip(uconvert(u"kg", W_0_init))
     W_payload = ustrip(uconvert(u"kg", W_payload))
@@ -194,6 +200,11 @@ function weight_converge(;W_0_init, W_payload, fuel_ratio, A, C)
     return(W_0, W_e)
 end
 
+"""
+    `fuel_weight_fractions` - A function to obtain the fuel fractions at different stages of flight
+
+    Returns the fuel fractions
+"""
 function fuel_weight_fractions(;stage::String,engine_type::String,V_md,V_bar,LD_max,SFC_cruise,SFC_loiter,endurance = 0.0, range= 0.0)
     if engine_type != "Jet"
         SFC_cruise = upreferred(SFC_cruise * V_bar * V_md)
@@ -224,6 +235,11 @@ function fuel_weight_fractions(;stage::String,engine_type::String,V_md,V_bar,LD_
     return fraction
 end
 
+"""
+    `fuel_ratio` - A function to obtain the final fuel fraction after considering all stages
+
+    Returns the fuel fractions and dataframe
+"""
 function fuel_ratio(;df_WS::DataFrame,WS_idx::Int,min_fuel_vel::DataFrame,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,save_info::Bool = false)
     # Trapped fuel ratio (2%)
     trapped_fuel = 1.02
@@ -301,6 +317,11 @@ function fuel_ratio(;df_WS::DataFrame,WS_idx::Int,min_fuel_vel::DataFrame,df_air
     return (final_fuel_ratio,df_mission)
 end
 
+"""
+    `basic_cost_calc` - A function to calculate the basic operational costs
+
+    Returns the costs and relevant dataframes
+"""
 function basic_cost_calc(x, p, save_info::Bool = false)
     # Expand the parameters of p
     df_WS = p.df_WS
@@ -349,12 +370,22 @@ function basic_cost_calc(x, p, save_info::Bool = false)
     return (total_cost, df_cost_breakdown, df_aircraft, df_mission, df_payload)
 end
 
+"""
+    `opt_basic_cost` - A function to calculate the basic operational costs
+
+    Only returns the total cost (relevant for optimisations if needed)
+"""
 function opt_basic_cost(x, p)
     (total_cost, _, _, _, _) = basic_cost_calc(x, p)
 
     return total_cost
 end
 
+"""
+    `velocity_optimise_main` - A main function to optimise velocity (for min cost)
+
+    Rerturn updated values for df_WS and df_mission
+"""
 function velocity_optimise_main(;df_WS::DataFrame,velocity_list::DataFrame,df_aircraft::DataFrame,N_aircraft::Int, aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,payload_idx::Int,df_cost::DataFrame)
     # Get the velocities
     min_fuel_vel = velocity_list[findall(value -> occursin(Regex("(?i)Minimum Fuel Velocity"),value),velocity_list[:,:Type]),:]
@@ -441,7 +472,7 @@ function velocity_optimise_main(;df_WS::DataFrame,velocity_list::DataFrame,df_ai
             dropped_payload = df_mission[findfirst(==("Payload_Drop"),df_mission[:,1]),col]
             drop_ratio = 1 - (dropped_payload / MTOW)
             α = α*fuel_fraction*drop_ratio
-            df_mission = InputValidate.df_update_or_append(df=df_mission,label="Cumulative Weight Fraction",value=α,N_config=N_stages,col=col)
+            df_mission = InputValidate.df_update_or_append(df=df_mission,label="α",value=α,N_config=N_stages,col=col)
         end
     end
 

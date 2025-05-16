@@ -90,6 +90,10 @@ function design_init(;mission_path :: String = "Default", aircraft_path :: Strin
     return (design_param,df_aircraft,N_aircraft,df_mission,N_stages,df_payload,N_payload,df_cost)
 end
 
+"""
+    `sampling_points` - A function to sample points in a design space
+
+"""
 function sampling_points(;N_sample::Int, design_param::DataFrame)
     design_row_idx = findall(==("Design"), design_param[:,"Type"])
     design_names = design_param[design_row_idx,"Design Parameter"]
@@ -109,6 +113,11 @@ function sampling_points(;N_sample::Int, design_param::DataFrame)
     return df_samples
 end
 
+
+"""
+    `WS_init` - A function which initialise the WS dataframe to store key information
+
+"""
 function WS_init(;WS,velocity_list::DataFrame,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::DataFrame)
     # Create a Wing loading dataframe, filled with just WS for now
     df_WS = DataFrame(WS = WS)
@@ -139,6 +148,20 @@ function WS_init(;WS,velocity_list::DataFrame,df_aircraft::DataFrame,aircraft_id
     df_WS[!, "V_stall_MTOW_clean"] = sqrt.(2*WS./(ρ_0*CL_max))
 
     return df_WS
+end
+
+function update_design(;WS_max, TW_max, df_aircraft::DataFrame, N_aircraft::Int, aircraft_idx::Int)
+    MTOW = df_aircraft[findfirst(==("MTOW"),df_aircraft[:,1]), aircraft_idx]
+
+    # Calculate the values
+    Sref = MTOW / WS_max
+    Tmax = MTOW * TW_max
+
+    # Append to the aircraft data!
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Sref",value=Sref,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Tmax",value=Tmax,N_config=N_aircraft,col=aircraft_idx)
+
+    return df_aircraft
 end
 
 
@@ -189,8 +212,8 @@ function design_start(;design_param::DataFrame,df_design::DataFrame,df_aircraft:
                 
                 # Get the T/W ratio required
                 TW_max = ConstraintDiagram.quick_constraint(WS_max=WS_max,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
-                print(df_WS)
-                print(TW_max)
+
+
             end
         end
     end
