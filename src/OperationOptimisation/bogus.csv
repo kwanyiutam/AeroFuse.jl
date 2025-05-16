@@ -22,7 +22,7 @@ Wing CD0 Landing Penalty,,0.07,Baseline Jet
 Wing Airfoil,,NACA651412,Baseline Jet
 Wing Dihedral,degrees,2,Baseline Jet
 Wing Sweep,degrees,10,Baseline Jet
-Wing Taper Ratio,,OPT;Wing Taper Ratio;0;1,Baseline Jet
+Wing Taper Ratio,,0.5,Baseline Jet
 Wing Setting Angle,degrees,2,Baseline Jet
 Wing Twist Angle,degrees,0,Baseline Jet
 Wing MAC Location (Relative to Fuselage Length),,0.5,Baseline Jet

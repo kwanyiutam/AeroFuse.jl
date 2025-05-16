@@ -13,6 +13,16 @@ Unitful.register(AeroUnits)
 # Include the ParseData module
 include("parsedata.jl")
 
+function get_value(df::DataFrame,label::String,col=nothing,all_col::Bool=false)
+    if all_col == true
+        value = df[findfirst(==(label),df[:,1]),:]
+    else
+        value = df[findfirst(==(label),df[:,1]),col]
+    end
+
+    return value
+end
+
 """
     `rowcol_names_unique` - A function which checks whether the rows or columns names were unique
     

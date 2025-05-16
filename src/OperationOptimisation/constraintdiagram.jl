@@ -12,6 +12,9 @@ Unitful.register(AeroUnits)
 # Include the ParseData module
 include("parsedata.jl")
 
+# Include the InputValidate module
+include("inputvalidate.jl")
+
 """
     `point_perf` - A function to get the point performance of aircraft during climb, cruise, loiter or descend
 
@@ -30,12 +33,12 @@ function point_perf(;WS,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::Dat
     n_row = findfirst(==("Load Factor"),df_mission[:,1])
 
     # Aircraft information
-    η_prop = df_aircraft[findfirst(==("Engine Propeller Efficiency"),df_aircraft[:,1]),aircraft_idx]
-    AR = df_aircraft[findfirst(==("Wing AR"),df_aircraft[:,1]),aircraft_idx]
-    e = df_aircraft[findfirst(==("Oswald Efficiency"),df_aircraft[:,1]),aircraft_idx]
-    CD0 = df_aircraft[findfirst(==("CD0"),df_aircraft[:,1]),aircraft_idx]
-    engine_type = df_aircraft[findfirst(==("Engine Type"),df_aircraft[:,1]),aircraft_idx]
-    number_of_engines = df_aircraft[findfirst(==("Number of Engines"),df_aircraft[:,1]),aircraft_idx]
+    η_prop = InputValidate.get_value(df_aircraft,"Engine Propeller Efficiency",aircraft_idx)
+    AR = InputValidate.get_value(df_aircraft,"Wing AR",aircraft_idx)
+    e = InputValidate.get_value(df_aircraft,"Oswald Efficiency",aircraft_idx)
+    CD0 = InputValidate.get_value(df_aircraft,"CD0",aircraft_idx)
+    engine_type = InputValidate.get_value(df_aircraft,"Engine Type",aircraft_idx)
+    number_of_engines = InputValidate.get_value(df_aircraft,"Number of Engines",aircraft_idx)
 
     # Initialise a variable to save TW data
     if engine_type == "Jet"
@@ -97,10 +100,10 @@ end
     return the angles (OEI and AEO)
 """
 function second_seg_climb(;df_aircraft::DataFrame,aircraft_idx::Int,V)
-    V_V_AEO = df_aircraft[findfirst(==("Climb Rate AEO"), df_aircraft[:,1]),aircraft_idx]
-    V_V_OEI = df_aircraft[findfirst(==("Climb Rate OEI"), df_aircraft[:,1]),aircraft_idx]
-    γ_2_desc = df_aircraft[findfirst(==("Climb Gradient"), df_aircraft[:,1]),aircraft_idx]
-    N_engines = df_aircraft[findfirst(==("Number of Engines"), df_aircraft[:,1]),aircraft_idx]
+    V_V_AEO = InputValidate.get_value(df_aircraft,"Climb Rate AEO",aircraft_idx)
+    V_V_OEI = InputValidate.get_value(df_aircraft,"Climb Rate OEI",aircraft_idx)
+    γ_2_desc = InputValidate.get_value(df_aircraft,"Climb Gradient",aircraft_idx)
+    N_engines = InputValidate.get_value(df_aircraft,"Number of Engines",aircraft_idx)
 
     γ_2_AEO = NaN
     γ_2_OEI = NaN
@@ -144,21 +147,24 @@ function takeoff_distance(;WS,df_aircraft::DataFrame,aircraft_idx::Int,df_missio
     ### Aerodynamic coefficients
     # ASSUME C_L = 0 for takeoff, as it is effectively no lift (zero AoA)
     CL = fill(0.0, length(WS), 1)
-    CL_max = df_aircraft[findfirst(==("Wing CLmax"), df_aircraft[:,1]),aircraft_idx]
-    CL_max_tof = df_aircraft[findfirst(==("Wing CLmax Takeoff Flaps"), df_aircraft[:,1]),aircraft_idx]
+
+    CL_max = InputValidate.get_value(df_aircraft,"Wing CLmax",aircraft_idx)
+    CL_max_tof = InputValidate.get_value(df_aircraft,"Wing CLmax Takeoff Flaps",aircraft_idx)
     CL_max_total = CL_max + CL_max_tof
-    CD0 = df_aircraft[findfirst(==("CD0"), df_aircraft[:,1]),aircraft_idx]
-    CD0_tof = df_aircraft[findfirst(==("Wing CD0 Takeoff Penalty"), df_aircraft[:,1]),aircraft_idx]
-    CD0_ldg = df_aircraft[findfirst(==("Wing CD0 Landing Gear Penalty"), df_aircraft[:,1]),aircraft_idx]
+
+    CD0 = InputValidate.get_value(df_aircraft,"CD0",aircraft_idx)
+    CD0_tof = InputValidate.get_value(df_aircraft,"Wing CD0 Takeoff Penalty",aircraft_idx)
+    CD0_ldg = InputValidate.get_value(df_aircraft,"Wing CD0 Landing Gear Penalty",aircraft_idx)
     CD0_total = CD0 + CD0_tof + CD0_ldg
-    AR = df_aircraft[findfirst(==("Wing AR"), df_aircraft[:,1]),aircraft_idx]
-    e = df_aircraft[findfirst(==("Oswald Efficiency"), df_aircraft[:,1]),aircraft_idx]
-    e_tof = df_aircraft[findfirst(==("Wing Oswald Efficiency Takeoff Penalty"), df_aircraft[:,1]),aircraft_idx]
-    e_ldg = df_aircraft[findfirst(==("Wing Oswald Efficiency Landing Gear Penalty"), df_aircraft[:,1]),aircraft_idx]
+
+    AR = InputValidate.get_value(df_aircraft,"Wing AR",aircraft_idx)
+    e = InputValidate.get_value(df_aircraft,"Oswald Efficiency",aircraft_idx)
+    e_tof = InputValidate.get_value(df_aircraft,"Wing Oswald Efficiency Takeoff Penalty",aircraft_idx)
+    e_ldg = InputValidate.get_value(df_aircraft,"Wing Oswald Efficiency Landing Gear Penalty",aircraft_idx)
     e_total = e + e_tof + e_ldg
 
     ### Runway conditions
-    μ = df_aircraft[findfirst(==("Takeoff Friction"), df_aircraft[:,1]),aircraft_idx]
+    μ = InputValidate.get_value(df_aircraft,"Takeoff Friction",aircraft_idx)
 
     # If missing, means the takeoff friction has not been specified by the airworthiness requirements
     if ismissing(μ)
@@ -167,14 +173,14 @@ function takeoff_distance(;WS,df_aircraft::DataFrame,aircraft_idx::Int,df_missio
     end
 
     ### Takeoff factors
-    V_to_factor = df_aircraft[findfirst(==("Takeoff Velocity Relative to Stall"), df_aircraft[:,1]),aircraft_idx]
-    takeoff_distance_factor = df_aircraft[findfirst(==("Takeoff Distance Multiplier"), df_aircraft[:,1]),aircraft_idx]
-    engine_type = df_aircraft[findfirst(==("Engine Type"), df_aircraft[:,1]),aircraft_idx]
+    V_to_factor = InputValidate.get_value(df_aircraft,"Takeoff Velocity Relative to Stall",aircraft_idx)
+    takeoff_distance_factor = InputValidate.get_value(df_aircraft,"Takeoff Distance Multiplier",aircraft_idx)
+    engine_type = InputValidate.get_value(df_aircraft,"Engine Type",aircraft_idx)
 
     ### BFL Conditions -> Using Imperial units
     g_imp = uconvert(u"ft/s^2", g) # Gravitational acceleration constant
-    obstacle_height_imp = uconvert(u"ft", df_aircraft[findfirst(==("Takeoff Obstacle"), df_aircraft[:,1]),aircraft_idx])
-    V_second_seg_factor = df_aircraft[findfirst(==("Climbing Velocity Relative to Stall"), df_aircraft[:,1]),aircraft_idx]
+    obstacle_height_imp = uconvert(u"ft", InputValidate.get_value(df_aircraft,"Takeoff Obstacle",aircraft_idx))
+    V_second_seg_factor = InputValidate.get_value(df_aircraft,"Climbing Velocity Relative to Stall",aircraft_idx)
     WS_imp = uconvert.(u"lbf/ft^2", WS)
 
     # Initialise Takeoff TW 
@@ -193,16 +199,16 @@ function takeoff_distance(;WS,df_aircraft::DataFrame,aircraft_idx::Int,df_missio
     idx = 1
 
     for col in col_idx
-        α = df_mission[findfirst(==("α"), df_mission[:,1]), col]
-        β = df_mission[findfirst(==("Engine Efficiency Scaling"), df_mission[:,1]), col]
-        ρ = df_mission[findfirst(==("ρ"),df_mission[:,1]),col]
+        α = InputValidate.get_value(df_mission,"α",col)
+        β = InputValidate.get_value(df_mission,"Engine Efficiency Scaling",col)
+        ρ = InputValidate.get_value(df_mission,"ρ",col)
         ρ_imp = uconvert(u"slug/ft^3", ρ)
-        σ = df_mission[findfirst(==("σ"),df_mission[:,1]),col]
-        takeoff_distance = df_mission[findfirst(==("Distance"),df_mission[:,1]), col] * takeoff_distance_factor
+        σ = InputValidate.get_value(df_mission,"σ",col)
+        takeoff_distance = InputValidate.get_value(df_mission,"Distance",col) * takeoff_distance_factor
 
         if ismissing(μ)
-            runway = df_mission[findfirst(==("Runway"), df_mission[:,1]),col]
-            μ = df_friction[findfirst(==(runway), df_friction[:,1]), "Friction"]
+            runway = InputValidate.get_value(df_mission,"Runway",col)
+            μ = InputValidate.get_value(df_friction,runway,"Friction")
 
             if ismissing(μ)
                 throw(ArugmentError("Runway condition $runway cannot be found! Please check whether the runway condition is specified in the assumptions"))
@@ -221,11 +227,11 @@ function takeoff_distance(;WS,df_aircraft::DataFrame,aircraft_idx::Int,df_missio
 
         ### Determine whether the input is power or thrust 
         if engine_type == "Jet"
-            λ_bpr = df_aircraft[findfirst(==("Engine Bypass Ratio"), df_aircraft[:,1]),aircraft_idx]
+            λ_bpr = InputValidate.get_value(df_aircraft,"Engine Bypass Ratio",aircraft_idx)
             k_e = 0.75 * ((5 + λ_bpr) / (4 + λ_bpr))
         else
-            prop_disc_load = uconvert(u"hp/ft^2", df_aircraft[findfirst(==("Engine Propeller Disc Load"), df_aircraft[:,1]),aircraft_idx])
-            prop_type = df_aircraft[findfirst(==("Engine Propeller Type"), df_aircraft[:,1]),aircraft_idx]
+            prop_disc_load = uconvert(u"hp/ft^2", InputValidate.get_value(df_aircraft,"Engine Propeller Disc Load",aircraft_idx))
+            prop_type = InputValidate.get_value(df_aircraft,"Engine Propeller Type",aircraft_idx)
 
             if prop_type == "Constant Speed"
                 k_c = 1
@@ -255,7 +261,7 @@ function takeoff_distance(;WS,df_aircraft::DataFrame,aircraft_idx::Int,df_missio
         # Convert to power to weight ratio for prop
         if engine_type in ["Propeller","Turboprop"]
             # Ground Roll TW
-            μ_prop = df_aircraft[findfirst(==("Engine Propeller Efficiency"), df_aircraft[:,1]),aircraft_idx]
+            μ_prop = InputValidate.get_value(df_aircraft,"Engine Propeller Efficiency",aircraft_idx)
             TW_ground_roll[:,idx] = TW_ground_roll_save .* V_LOF ./ μ_prop
 
             # Climb TW
@@ -286,23 +292,23 @@ function get_max_WS(;df_aircraft::DataFrame, aircraft_idx::Int,df_mission::DataF
     row_idx = findfirst(==("Stage"),df_mission[:,1])
     landing_col = findall(==("Landing"),skipmissing(collect(df_mission[row_idx, :])))
 
-    K_l = 1/df_aircraft[findfirst(==("Landing Distance Multiplier"), df_aircraft[:,1]),aircraft_idx] # Multiplier for landing distance (smaller)
-    S_a = df_aircraft[findfirst(==("Glide Slope"), df_aircraft[:,1]), aircraft_idx] # Glide Slope
-    CL_max = df_aircraft[findfirst(==("Wing CLmax"), df_aircraft[:,1]), aircraft_idx]
-    ΔCL_max = df_aircraft[findfirst(==("Wing CLmax Landing Flaps"), df_aircraft[:,1]), aircraft_idx]
+    
+    K_l = 1/InputValidate.get_value(df_aircraft,"Landing Distance Multiplier",aircraft_idx) # Multiplier for landing distance (smaller)
+    S_a = uconvert(u"m", InputValidate.get_value(df_aircraft,"Glide Slope",aircraft_idx)) # Glide Slope extra distance
+    CL_max = InputValidate.get_value(df_aircraft,"Wing CLmax",aircraft_idx)
+    ΔCL_max = InputValidate.get_value(df_aircraft,"Wing CLmax Landing Flaps",aircraft_idx)
     CL_max_land = CL_max + ΔCL_max
     g = uconvert(u"m/s^2", 1*u"ge") # Gravitational acceleration constant
 
     WS_max = 999999
-    (ρ_0,_,_,_) = ISAdata(0*u"m")
 
     # For each landing column
     for col in landing_col
         # Get landing distance
-        LDA = df_mission[findfirst(==("Distance"), df_mission[:,1]),col] # Landing distance
-        α = df_mission[findfirst(==("Max_Mass_Ratio"), df_mission[:,1]),col]
-        reverser = df_mission[findfirst(==("Reverser"), df_mission[:,1]),col]
-        σ = df_mission[findfirst(==("σ"),df_mission[:,1]),col]
+        LDA = uconvert(u"m", InputValidate.get_value(df_mission,"Distance",col))
+        α = InputValidate.get_value(df_mission,"Max_Mass_Ratio",col)
+        reverser = InputValidate.get_value(df_mission,"Reverser",col)
+        σ = InputValidate.get_value(df_mission,"σ",col)
 
         if reverser == false
             K_r = 1
@@ -315,7 +321,7 @@ function get_max_WS(;df_aircraft::DataFrame, aircraft_idx::Int,df_mission::DataF
         WS_max = min(WS_max, ustrip(WS))
     end
     
-    return WS_max*u"kg/m/s^2"
+    return WS_max*u"kg/m/s^2" 
 end
 
 """
@@ -333,7 +339,7 @@ function quick_constraint(;WS_max,df_aircraft::DataFrame,aircraft_idx::Int,df_mi
     # Concat the TW data
     TW_to_max = vcat(TW_ground_roll,TW_climb_AEO,TW_climb_OEI)
 
-    BFL_consider = df_aircraft[findfirst(==("BFL Consideration"),df_aircraft[:,1]),aircraft_idx]
+    BFL_consider = InputValidate.get_value(df_aircraft,"BFL Consideration",aircraft_idx)
 
     # If BFL has to be considered, then concatenate it
     if BFL_consider == true
