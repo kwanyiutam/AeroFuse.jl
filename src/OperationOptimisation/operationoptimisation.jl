@@ -213,7 +213,8 @@ function design_start(;design_param::DataFrame,df_design::DataFrame,df_aircraft:
                 # Get the T/W ratio required
                 TW_max = ConstraintDiagram.quick_constraint(WS_max=WS_max,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
 
-
+                # Initialise the aircraft design
+                df_aircraft = update_design(WS_max = WS_max, TW_max = TW_max, df_aircraft = df_aircraft, N_aircraft = N_aircraft, aircraft_idx = aircraft_idx)
             end
         end
     end

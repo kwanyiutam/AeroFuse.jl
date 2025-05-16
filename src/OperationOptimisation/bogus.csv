@@ -44,3 +44,6 @@ VT Taper Ratio,,0.6,Baseline Jet
 VT Setting Angle,degrees,0,Baseline Jet
 VT Twist Angle,degrees,0,Baseline Jet
 VT MAC Location (Relative to Fuselage Length),,1,Baseline Jet
+Nose Fineness Ratio,,1.5,Baseline Jet
+Afterbody Fineness Ratio,,4,Baseline Jet
+Afterbody Upsweep Angle,degrees,10,Baseline Jet

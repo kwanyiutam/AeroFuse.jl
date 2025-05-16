@@ -259,11 +259,11 @@ function operator_compare(;df::DataFrame,rule::String,operator::String,row::Int,
         elseif operator == ">"
             @assert data > value "Value at Row $assumption Column $config must be bigger than $value"
         elseif operator == "<"
-            @assert data > value "Value at Row $assumption Column $config must be less than $value"
+            @assert data < value "Value at Row $assumption Column $config must be less than $value"
         elseif operator == "=="
-            @assert data > value "Value at Row $assumption Column $config must be equal to $value"
+            @assert data == value "Value at Row $assumption Column $config must be equal to $value"
         elseif operator == "!="
-            @assert data > value "Value at Row $assumption Column $config must not be equal to $value"
+            @assert data != value "Value at Row $assumption Column $config must not be equal to $value"
         else
             throw(ArgumentError("Cannot parse the operator at Row $assumption Column $config"))
         end
@@ -288,8 +288,8 @@ function design_check(;df::DataFrame,design_param::DataFrame,location::String,N_
     end
 
     # Specify types of design parameters, optimisation or design
-    types_regex = ["OPT;","DES;","MIN_COST;","MIN_FUEL"]
-    types = ["Optimise", "Design", "Minimum Cost Velocity", "Minimum Fuel Velocity"]
+    types_regex = ["OPT;","DES;","PERT;","MIN_COST;","MIN_FUEL"]
+    types = ["Optimise", "Design", "Perturbations", "Minimum Cost Velocity", "Minimum Fuel Velocity"]
 
     # For each column
     for col in (ncol(df)-N_config+1):ncol(df)
