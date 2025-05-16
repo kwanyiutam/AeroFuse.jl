@@ -27,6 +27,9 @@ include("initialsizing.jl")
 # include the ConstraintDiagram module
 include("constraintdiagram.jl")
 
+# include the AircraftOptimisation module
+include("aircraftoptimisation.jl")
+
 """
     `design_init` - A function which initiates the design variables
 
@@ -94,12 +97,18 @@ end
     `sampling_points` - A function to sample points in a design space
 
 """
-function sampling_points(;N_sample::Int, design_param::DataFrame)
-    design_row_idx = findall(==("Design"), design_param[:,"Type"])
+function sampling_points(;N_sample::Int, design_param::DataFrame, design_type::String="Design")
+    design_row_idx = findall(==(design_type), design_param[:,"Type"])
+
+    if isempty(design_row_idx)
+        return DataFrame()
+    end
+
     design_names = design_param[design_row_idx,"Design Parameter"]
     design_lb = design_param[design_row_idx,"Lower Bound"]
     design_ub = design_param[design_row_idx,"Upper Bound"]
     continuous_check = design_param[design_row_idx,"Continuous"]
+    
 	sample_points = QuasiMonteCarlo.sample(N_sample, design_lb, design_ub, LatinHypercubeSample())
 
     df_samples = DataFrame(sample_points',design_names)
@@ -153,6 +162,16 @@ end
 function update_design(;WS_max, TW_max, df_aircraft::DataFrame, N_aircraft::Int, aircraft_idx::Int)
     MTOW = df_aircraft[findfirst(==("MTOW"),df_aircraft[:,1]), aircraft_idx]
 
+    if MTOW > 150.0*1000*u"kg"
+        cost_model = "Full_A"
+    elseif MTOW > 51.0*1000*u"kg"
+        cost_model = "Full_B"
+    elseif MTOW > 15.0*1000*u"kg"
+        cost_model = "Full_C"
+    else
+        cost_model = "Full_D"
+    end
+
     # Calculate the values
     Sref = MTOW / WS_max
     Tmax = MTOW * TW_max
@@ -160,8 +179,36 @@ function update_design(;WS_max, TW_max, df_aircraft::DataFrame, N_aircraft::Int,
     # Append to the aircraft data!
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Sref",value=Sref,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Tmax",value=Tmax,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Cost Model",value=cost_model,N_config=N_aircraft,col=aircraft_idx)
 
     return df_aircraft
+end
+
+"""
+    `mission_design_flow` - A function which runs the design workflow
+"""
+function mission_design_flow(;design_param::DataFrame,velocity_list::DataFrame,df_pert::DataFrame,df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,df_cost::DataFrame)
+    for payload_idx in (ncol(df_payload)-N_payload+1):ncol(df_payload)
+        (df_aircraft,df_mission,df_payload) = InitialSizing.update_init_design(df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx) 
+            
+        # Assume WS_max is restricted by landing!
+        WS_max = ConstraintDiagram.get_max_WS(df_aircraft = df_aircraft, aircraft_idx = aircraft_idx,df_mission = df_mission)
+
+        # Only need to optimise at WS_max, because that is where the minimum cost is likely at (Quick mode)
+        df_WS = WS_init(WS=[WS_max],velocity_list=velocity_list,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission)
+        
+        # Get the minimum cost velocity and their respective design
+        (df_WS, df_mission) = InitialSizing.velocity_optimise_main(df_WS = df_WS,velocity_list = velocity_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,payload_idx=payload_idx,df_cost=df_cost)
+        
+        # Get the T/W ratio required
+        TW_max = ConstraintDiagram.quick_constraint(WS_max=WS_max,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
+
+        # Initialise the aircraft design
+        df_aircraft = update_design(WS_max = WS_max, TW_max = TW_max, df_aircraft = df_aircraft, N_aircraft = N_aircraft, aircraft_idx = aircraft_idx)
+
+        # Run the aircraft optimisation / perturbations
+        AircraftOptimisation.aircraft_optimisation_start(design_param = design_param,df_pert = df_pert,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx,df_cost=df_cost)
+    end
 end
 
 
@@ -169,7 +216,7 @@ end
     `design_start` - A function which runs the design workflow
 
 """
-function design_start(;design_param::DataFrame,df_design::DataFrame,df_aircraft::DataFrame,N_aircraft::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,df_cost::DataFrame)
+function design_start(;design_param::DataFrame,df_design::DataFrame,df_pert::DataFrame, df_aircraft::DataFrame,N_aircraft::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,df_cost::DataFrame)
     # Get the list of design-specific parameters
     design_list = design_param[findall(==("Design"),design_param[:,:Type]),:]
 
@@ -186,35 +233,24 @@ function design_start(;design_param::DataFrame,df_design::DataFrame,df_aircraft:
 
     # For each aircraft
     for aircraft_idx in (ncol(df_aircraft)-N_aircraft+1):ncol(df_aircraft)
-        # For each specified design point
-        #for aircraft_col in 5:ncol()
-        for row in 1:nrow(df_design)
-            ### Update properties based on the design parameters
-            # For each design parameter
-            for param in 1:ncol(df_design)
-                param_name = DataFrames.names(df_design)[param]
-                param_value = df_design[row,param]
-        
-                # Update the datasets to include the new parameters
-                (df_aircraft,df_mission,df_payload) = InputValidate.update_df_with_design(design_list=design_list,parameter=param_name,value=param_value,df_aircraft=df_aircraft,df_mission=df_mission,df_payload=df_payload)
-            end
-
-            (df_aircraft,df_mission,df_payload) = InitialSizing.update_init_design(df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload) 
+        if nrow(df_design) == 0
+            # Directly run the mission design flow
+            mission_design_flow(design_param=design_param,df_pert=df_pert,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,df_cost=df_cost)
+        else
+            # For each specified design point
+            for row in 1:nrow(df_design)
+                ### Update properties based on the design parameters
+                # For each design parameter
+                for param in 1:ncol(df_design)
+                    param_name = DataFrames.names(df_design)[param]
+                    param_value = df_design[row,param]
             
-            WS_max = ConstraintDiagram.get_max_WS(df_aircraft = df_aircraft, aircraft_idx = aircraft_idx,df_mission = df_mission)
+                    # Update the datasets to include the new parameters
+                    (df_aircraft,df_mission,df_payload) = InputValidate.update_df_with_design(design_list=design_list,parameter=param_name,value=param_value,df_aircraft=df_aircraft,df_mission=df_mission,df_payload=df_payload)
+                end
 
-            for payload_idx in (ncol(df_payload)-N_payload+1):ncol(df_payload)
-                # Only need to optimise at WS_max, because that is where the minimum cost is likely at (Quick mode)
-                df_WS = WS_init(WS=[WS_max],velocity_list=velocity_list,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission)
-                
-                # Get the minimum cost velocity and their respective design
-                (df_WS, df_mission) = InitialSizing.velocity_optimise_main(df_WS = df_WS,velocity_list = velocity_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,payload_idx=payload_idx,df_cost=df_cost)
-                
-                # Get the T/W ratio required
-                TW_max = ConstraintDiagram.quick_constraint(WS_max=WS_max,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
-
-                # Initialise the aircraft design
-                df_aircraft = update_design(WS_max = WS_max, TW_max = TW_max, df_aircraft = df_aircraft, N_aircraft = N_aircraft, aircraft_idx = aircraft_idx)
+                # Run the mission design flow
+                mission_design_flow(design_param=design_param,velocity_list=velocity_list,df_pert=df_pert,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,df_cost=df_cost)
             end
         end
     end

@@ -1,8 +1,6 @@
 module InitialSizing
 # Initialise packages used
-using CSV
 using DataFrames
-using LsqFit
 using Unitful
 using ISAData
 
@@ -24,95 +22,6 @@ include("inputvalidate.jl")
 
 # include the CostModel module
 include("costmodel.jl")
-
-function fuselage_sizing(;df_payload::DataFrame,N_payload::Int,payload_col::Int)
-    # Get the volume required for cargo bay (baggage + cargo + droppable)
-    W_baggage = df_payload[findfirst(==("Baggage Total Weight"),df_payload[:,1]),payload_col]
-    W_cargo = df_payload[findfirst(==("Cargo Weight"),df_payload[:,1]),payload_col]
-    density_baggage = df_payload[findfirst(==("Baggage Packing Density"),df_payload[:,1]),payload_col]
-    density_cargo = df_payload[findfirst(==("Cargo Packing Density"),df_payload[:,1]),payload_col]
-    V_baggage = uconvert(u"m^3", W_baggage/density_baggage)
-    V_cargo = uconvert(u"m^3", W_cargo/density_cargo)
-    V_storage = V_baggage + V_cargo
-
-    # Fuselage Wall thickness (one side, so multiply by two for diameter)
-    wall_thick = uconvert(u"m", df_payload[findfirst(==("Fuselage Wall Thickness"),df_payload[:,1]),payload_col])
-
-    # Get the number of passengers and initiate different number of rows
-    N_passenger = df_payload[findfirst(==("Passengers"),df_payload[:,1]),payload_col]
-    seat_pitch = uconvert(u"m", df_payload[findfirst(==("Seat Pitch"),df_payload[:,1]),payload_col])
-    seat_abreast = df_payload[findfirst(==("Seat Abreast"),df_payload[:,1]),payload_col]
-    N_rows = ceil(N_passenger / seat_abreast)
-    seat_length = seat_pitch * N_rows
-
-    # Properties for height
-    floor_thick = df_payload[findfirst(==("Floor Thickness Relative to Diameter"),df_payload[:,1]),payload_col]
-    cargo_height = uconvert(u"m", df_payload[findfirst(==("Cargo Bay Height"),df_payload[:,1]),payload_col])
-    head_room = uconvert(u"m", df_payload[findfirst(==("Head Room"),df_payload[:,1]),payload_col])
-    extra_height = uconvert(u"m", df_payload[findfirst(==("Extra Height"),df_payload[:,1]),payload_col])
-    approx_height = (head_room+cargo_height+(2*wall_thick)+extra_height)*(1+floor_thick) # Just an approximation, likely need further refinement
-
-    # Properties for width
-    aisle_width = uconvert(u"m", df_payload[findfirst(==("Aisle Width"),df_payload[:,1]),payload_col])
-    cargo_width = uconvert(u"m", df_payload[findfirst(==("Cargo Bay Width"),df_payload[:,1]),payload_col])
-    extra_width = uconvert(u"m", df_payload[findfirst(==("Extra Width"),df_payload[:,1]),payload_col])
-
-    # Get seat widths of different configs
-    seat_width_1 = uconvert(u"m", df_payload[findfirst(==("Seat Width 1 Pax"),df_payload[:,1]),payload_col])
-    seat_width_2 = uconvert(u"m", df_payload[findfirst(==("Seat Width 2 Pax"),df_payload[:,1]),payload_col])
-    seat_width_3 = uconvert(u"m", df_payload[findfirst(==("Seat Width 3 Pax"),df_payload[:,1]),payload_col])
-
-    # Start filling from three across then down
-    N_seat_3 = floor(seat_abreast / 3)
-    N_seat_2 = floor((seat_abreast-N_seat_3*3) / 2)
-    N_seat_1 = seat_abreast-N_seat_3*3-N_seat_2*2
-
-    seat_width_total = seat_width_1*N_seat_1 + seat_width_2*N_seat_2 + seat_width_3*N_seat_3
-
-    approx_width = max((seat_width_total+aisle_width),cargo_width) + 2*wall_thick + extra_width
-
-    # Effective diameter
-    D_eff = sqrt(approx_width*approx_height)
-
-    df_payload = InputValidate.df_update_or_append(df=df_payload,label="Seat Rows",value=N_rows,N_config=N_payload,col=payload_col)
-    df_payload = InputValidate.df_update_or_append(df=df_payload,label="Three Seats",value=N_seat_3,N_config=N_payload,col=payload_col)
-    df_payload = InputValidate.df_update_or_append(df=df_payload,label="Two Seats",value=N_seat_2,N_config=N_payload,col=payload_col)
-    df_payload = InputValidate.df_update_or_append(df=df_payload,label="One Seat",value=N_seat_1,N_config=N_payload,col=payload_col)
-    df_payload = InputValidate.df_update_or_append(df=df_payload,label="Diameter",value=D_eff,N_config=N_payload,col=payload_col)
-
-    # Length calculations
-    cross_aisle_length = uconvert(u"m", df_payload[findfirst(==("Cross Aisle per 20"),df_payload[:,1]),payload_col])
-    lavatories_length = uconvert(u"m", df_payload[findfirst(==("Lavatories per 50"),df_payload[:,1]),payload_col])
-    galley_vol = uconvert(u"m^3", df_payload[findfirst(==("Galley per pax"),df_payload[:,1]),payload_col])
-
-    # Get the actual length increase
-    cross_aisle_length = cross_aisle_length * ceil(N_passenger / 20)
-    lavatories_total_length = lavatories_length * ceil(N_passenger / 50)
-
-    # Lavatories are square, and can be packed tighter (right now assume all lengthwise)
-    N_lavatory_rows = ceil(D_eff / lavatories_total_length)
-    lavatory_actual_length = N_lavatory_rows * lavatories_length
-
-    # Approximate the galley length needed by assuming head room x seat width is all used for galley, just an approximation
-    galley_length = (galley_vol * N_passenger) / (head_room * seat_width_total)
-
-    # Get cabin length
-    extra_length = uconvert(u"m", df_payload[findfirst(==("Extra Length"),df_payload[:,1]),payload_col])
-    cabin_length = seat_length + cross_aisle_length + lavatory_actual_length + galley_length + extra_length
-    
-    # Check how much cargo space left is needed
-    V_cargo_remain = V_storage - (cargo_height*cargo_width*cabin_length)
-
-    # If still need to carry more cargo, assume a separate cargo space at the back of the cabin (extending the cabin length)
-    if V_cargo_remain > 0.0 * u"m^3"
-        # Assume the back cargo bay is effectively the same as the belly one
-        cabin_length = V_cargo_remain / (cargo_width * cargo_height)
-    end
-
-    df_payload = InputValidate.df_update_or_append(df=df_payload,label="Cabin Length",value=cabin_length,N_config=N_payload,col=payload_col)
-
-    return df_payload
-end
 
 """
     `define_aircraft_properties` - A function which defines aircraft properties needed for initial sizing
@@ -195,48 +104,42 @@ end
 
     Returns the updated dataframes
 """
-function update_init_design(;df_aircraft::DataFrame,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int)
+function update_init_design(;df_aircraft::DataFrame,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,payload_idx::Int)
     W_drop = sum(df_mission[findfirst(==("Payload_Drop"),df_mission[:,1]),(ncol(df_mission)-N_stages+1):ncol(df_mission)])
-    
-    # For each payload configuration column
-    for col in (ncol(df_payload)-N_payload+1):ncol(df_payload)
-        # Get number of passenger
-        N_pax = df_payload[findfirst(==("Passengers"),df_payload[:,1]),col]
 
-        # Get number of flight crews, using minimum flight crew for now, and append to the payload row
-        N_fcrew = df_aircraft[findfirst(==("Min Flight Crew"),df_aircraft[:,1]),aircraft_idx]
-        df_payload = InputValidate.df_update_or_append(df=df_payload,label="Flight Crew",value=N_fcrew,N_config=N_payload,col=col)
+    # Get number of passenger
+    N_pax = df_payload[findfirst(==("Passengers"),df_payload[:,1]),payload_idx]
 
-        # Get number of cabin crews, and append to the payload row
-        N_ccrew = 0
+    # Get number of flight crews, using minimum flight crew for now, and append to the payload row
+    N_fcrew = df_aircraft[findfirst(==("Min Flight Crew"),df_aircraft[:,1]),aircraft_idx]
+    df_payload = InputValidate.df_update_or_append(df=df_payload,label="Flight Crew",value=N_fcrew,N_config=N_payload,col=payload_idx)
 
-        # 1 cabin crew every 50 passenger approximation
-        if N_pax > 10
-            N_ccrew = ceil(Int64, N_pax / 50)
-        end
+    # Get number of cabin crews, and append to the payload row
+    N_ccrew = 0
 
-        df_payload = InputValidate.df_update_or_append(df=df_payload,label="Cabin Crew",value=N_ccrew,N_config=N_payload,col=col)
-
-        # Get passenger + crew weight
-        W_per_ppl = df_payload[findfirst(==("Human Weight"),df_payload[:,1]),col]
-        W_ppl = (N_pax+N_fcrew+N_ccrew)*W_per_ppl
-
-        # Calculate Baggage weight per person
-        W_bag_per_ppl = df_payload[findfirst(==("Baggage Weight"),df_payload[:,1]),col]
-        W_bag = (N_pax+N_fcrew+N_ccrew)*W_bag_per_ppl
-
-        # Calculate Cargo weight
-        W_cargo = df_payload[findfirst(==("Cargo Weight"),df_payload[:,1]),col]
-
-        # Calculate total payload weight
-        W_payload = W_ppl + W_bag + W_cargo + W_drop
-        df_payload = InputValidate.df_update_or_append(df=df_payload,label="Baggage Total Weight",value=W_bag,N_config=N_payload,col=col)
-        df_payload = InputValidate.df_update_or_append(df=df_payload,label="Droppable Total Weight",value=W_bag,N_config=N_payload,col=col)
-        df_payload = InputValidate.df_update_or_append(df=df_payload,label="Payload Weight",value=W_payload,N_config=N_payload,col=col)
-
-        # Update fuselage information based on the number of passenger
-        df_payload = fuselage_sizing(df_payload=df_payload, N_payload=N_payload, payload_col=col)
+    # 1 cabin crew every 50 passenger approximation
+    if N_pax > 10
+        N_ccrew = ceil(Int64, N_pax / 50)
     end
+
+    df_payload = InputValidate.df_update_or_append(df=df_payload,label="Cabin Crew",value=N_ccrew,N_config=N_payload,col=payload_idx)
+
+    # Get passenger + crew weight
+    W_per_ppl = df_payload[findfirst(==("Human Weight"),df_payload[:,1]),payload_idx]
+    W_ppl = (N_pax+N_fcrew+N_ccrew)*W_per_ppl
+
+    # Calculate Baggage weight per person
+    W_bag_per_ppl = df_payload[findfirst(==("Baggage Weight"),df_payload[:,1]),payload_idx]
+    W_bag = (N_pax+N_fcrew+N_ccrew)*W_bag_per_ppl
+
+    # Calculate Cargo weight
+    W_cargo = df_payload[findfirst(==("Cargo Weight"),df_payload[:,1]),payload_idx]
+
+    # Calculate total payload weight
+    W_payload = W_ppl + W_bag + W_cargo + W_drop
+    df_payload = InputValidate.df_update_or_append(df=df_payload,label="Baggage Total Weight",value=W_bag,N_config=N_payload,col=payload_idx)
+    df_payload = InputValidate.df_update_or_append(df=df_payload,label="Droppable Total Weight",value=W_bag,N_config=N_payload,col=payload_idx)
+    df_payload = InputValidate.df_update_or_append(df=df_payload,label="Payload Weight",value=W_payload,N_config=N_payload,col=payload_idx)
 
     (ρ_0,_,_,_) = ISAdata(0*u"m")
 
