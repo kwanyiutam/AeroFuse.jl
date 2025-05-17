@@ -21,7 +21,7 @@ Wing CD0 Landing Gear Penalty,Aircraft,,,TRUE,Float64,0.02
 Wing CD0 Landing Penalty,Aircraft,,,TRUE,Float64,0.07
 Wing Airfoil,Aircraft,,AirfoilData,TRUE,String,NACA651412
 Wing Dihedral,Aircraft,degrees,,TRUE,Float64,2
-Wing Sweep,Aircraft,degrees,,TRUE,Float64,10
+Wing Quarterchord Sweep,Aircraft,degrees,,TRUE,Float64,10
 Wing Taper Ratio,Aircraft,,>=0,TRUE,Float64,OPT;Wing Taper Ratio;0;1
 Wing Setting Angle,Aircraft,degrees,,TRUE,Float64,2
 Wing Twist Angle,Aircraft,degrees,,TRUE,Float64,0
@@ -30,7 +30,7 @@ Wing MAC Location (Relative to Fuselage Length),Aircraft,,>=0,TRUE,Float64,0.5
 HT AR,Aircraft,,>=0,TRUE,Float64,5
 HT Airfoil,Aircraft,,AirfoilData,TRUE,String,NACA0012
 HT Dihedral,Aircraft,degrees,,TRUE,Float64,0
-HT Sweep,Aircraft,degrees,,TRUE,Float64,30
+HT Quarterchord Sweep,Aircraft,degrees,,TRUE,Float64,30
 HT Taper Ratio,Aircraft,,>=0,TRUE,Float64,0.5
 HT Setting Angle,Aircraft,degrees,,TRUE,Float64,0
 HT Twist Angle,Aircraft,degrees,,TRUE,Float64,0
@@ -39,7 +39,7 @@ HT Root Chord Location (Relative to Span of VT),Aircraft,,>=0;<=1,TRUE,Float64,0
 VT AR,Aircraft,,>=0,TRUE,Float64,1.2
 VT Airfoil,Aircraft,,AirfoilData,TRUE,String,NACA0012
 VT Dihedral,Aircraft,degrees,,TRUE,Float64,0
-VT Sweep,Aircraft,degrees,,TRUE,Float64,30
+VT Quarterchord Sweep,Aircraft,degrees,,TRUE,Float64,30
 VT Taper Ratio,Aircraft,,>=0,TRUE,Float64,0.6
 VT Setting Angle,Aircraft,degrees,,TRUE,Float64,0
 VT Twist Angle,Aircraft,degrees,,TRUE,Float64,0

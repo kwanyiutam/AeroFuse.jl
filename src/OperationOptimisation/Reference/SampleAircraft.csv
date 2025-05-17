@@ -21,7 +21,7 @@ Wing CD0 Landing Gear Penalty,,0.02,Baseline Jet
 Wing CD0 Landing Penalty,,0.07,Baseline Jet
 Wing Airfoil,,NACA651412,Baseline Jet
 Wing Dihedral,degrees,2,Baseline Jet
-Wing Sweep,degrees,10,Baseline Jet
+Wing Quarterchord Sweep,degrees,10,Baseline Jet
 Wing Taper Ratio,,OPT;Wing Taper Ratio;0;1,Baseline Jet
 Wing Setting Angle,degrees,2,Baseline Jet
 Wing Twist Angle,degrees,0,Baseline Jet
@@ -30,7 +30,7 @@ Wing MAC Location (Relative to Fuselage Length),,0.5,Baseline Jet
 HT AR,,5,Baseline Jet
 HT Airfoil,,NACA0012,Baseline Jet
 HT Dihedral,degrees,0,Baseline Jet
-HT Sweep,degrees,30,Baseline Jet
+HT Quarterchord Sweep,degrees,30,Baseline Jet
 HT Taper Ratio,,0.5,Baseline Jet
 HT Setting Angle,degrees,0,Baseline Jet
 HT Twist Angle,degrees,0,Baseline Jet
@@ -39,7 +39,7 @@ HT Root Chord Location (Relative to Span of VT),,0,Baseline Jet
 VT AR,,1.2,Baseline Jet
 VT Airfoil,,NACA0012,Baseline Jet
 VT Dihedral,degrees,0,Baseline Jet
-VT Sweep,degrees,30,Baseline Jet
+VT Quarterchord Sweep,degrees,30,Baseline Jet
 VT Taper Ratio,,0.6,Baseline Jet
 VT Setting Angle,degrees,0,Baseline Jet
 VT Twist Angle,degrees,0,Baseline Jet

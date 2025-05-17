@@ -160,7 +160,10 @@ function WS_init(;WS,velocity_list::DataFrame,df_aircraft::DataFrame,aircraft_id
 end
 
 function update_design(;WS_max, TW_max, df_aircraft::DataFrame, N_aircraft::Int, aircraft_idx::Int)
-    MTOW = df_aircraft[findfirst(==("MTOW"),df_aircraft[:,1]), aircraft_idx]
+    MTOW = InputValidate.get_value(df_aircraft,"MTOW",aircraft_idx)
+    AR = InputValidate.get_value(df_aircraft,"Wing AR",aircraft_idx)
+    g = uconvert(u"m/s^2", 1*u"ge") # Gravitational acceleration constant
+
 
     if MTOW > 150.0*1000*u"kg"
         cost_model = "Full_A"
@@ -173,11 +176,13 @@ function update_design(;WS_max, TW_max, df_aircraft::DataFrame, N_aircraft::Int,
     end
 
     # Calculate the values
-    Sref = MTOW / WS_max
-    Tmax = MTOW * TW_max
+    Sref = MTOW * g / WS_max
+    Tmax = MTOW * g * TW_max
+    bref = sqrt(AR * Sref)
 
     # Append to the aircraft data!
-    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Sref",value=Sref,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Wing Area",value=Sref,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Wing Span",value=bref,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Tmax",value=Tmax,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Cost Model",value=cost_model,N_config=N_aircraft,col=aircraft_idx)
 
@@ -199,7 +204,7 @@ function mission_design_flow(;design_param::DataFrame,velocity_list::DataFrame,d
         
         # Get the minimum cost velocity and their respective design
         (df_WS, df_mission) = InitialSizing.velocity_optimise_main(df_WS = df_WS,velocity_list = velocity_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,payload_idx=payload_idx,df_cost=df_cost)
-        
+
         # Get the T/W ratio required
         TW_max = ConstraintDiagram.quick_constraint(WS_max=WS_max,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
 
