@@ -6,6 +6,7 @@ using Unitful
 using AeroFuse
 using Roots
 using LinearAlgebra
+using Plots
 
 # Include the InputValidate module
 include("inputvalidate.jl")
@@ -17,10 +18,13 @@ include("inputvalidate.jl")
 
     return the VLM analysis
 """
-function make_case(α, wing_mesh, refs)
-    aircraft = ComponentVector(wing = make_horseshoes(wing_mesh))
+function make_case(α, wing_mesh, HT_mesh, VT_mesh, refs)
+    aircraft = ComponentVector(
+        wing = make_vortex_rings(wing_mesh),
+        htail = make_vortex_rings(HT_mesh),
+        vtail = make_vortex_rings(VT_mesh)
+    )
 
-    # Freestream conditions
     fs = Freestream(alpha = α)  # Design variable: Angle of attack
 
     # Solve system
@@ -34,7 +38,7 @@ end
 
     return the forces
 """
-function get_forces(system, wing_mesh)
+function get_forces(system, wing, HT, VT, fuse)
     # Evaluate aerodynamic coefficients
     CDi, CY, CL, Cl, Cm, Cn = nearfield(system)
     # CDi, _, _ = farfield(system)
@@ -42,62 +46,102 @@ function get_forces(system, wing_mesh)
     # Calculate equivalent flat-plate skin-friction drag
     # CDv = parasitic_drag_coefficient(wing_mesh, 1.0, system.reference)
 
-    # Calculate local-dissipation/local-friction drag
+    # Wing viscous drag
     CVs = norm.(surface_velocities(system)).wing
-    CDv = parasitic_drag_coefficient(wing_mesh, system.reference, 0.8, CVs)
+    CDv = parasitic_drag_coefficient(wing, system.reference, 0.1, CVs)
 
-    return (CDi = CDi, CDv = CDv, CD = CDi + CDv, CL = CL)
+    # HT viscous drag
+    CVs_HT = norm.(surface_velocities(system)).htail
+    CDv_HT = parasitic_drag_coefficient(HT, system.reference, 0.1, CVs_HT)
+
+    # VT viscous drag
+    CVs_VT = norm.(surface_velocities(system)).vtail
+    CDv_VT = parasitic_drag_coefficient(VT, system.reference, 0.1, CVs_VT)
+
+    # Fuselage viscous drag
+    CDv_F = parasitic_drag_coefficient(fuse, system.reference, 0.05)
+
+    CDv = CDv + CDv_HT + CDv_VT + CDv_F
+
+    return (CDi = CDi, CDv = CDv, CDv_HT = CDv_HT, CDv_VT = CDv_VT, CDv_F = CDv_F, CD = CDi + CDv, CL = CL, L_D = CL / (CDi + CDv))
 end
 
-function initiate_wing_mesh(df_aircraft,aircraft_idx, wing_type,n)
+function initiate_wing_mesh(df_aircraft,aircraft_idx,wing_type,n_span,n_chord)
+    # Define
+    if wing_type == "Wing"
+        angle = 0.
+        axis = [0., 1., 0.]
+        symmetry = true
+    elseif wing_type == "HT"
+        angle = 0.
+        axis = [0., 1., 0.]
+        symmetry = true
+    elseif wing_type == "VT"
+        angle = 90.
+        axis = [1., 0., 0.]
+        symmetry = false
+    else
+        @warn "wing_type $wing_type cannot be found, assuming it is the same orientation as wing..."
+        angle = 0.
+        axis = [0., 0., 0.]
+        symmetry = true
+    end
+
     # Get data
+    positions = InputValidate.get_value(df_aircraft,"$wing_type Position",aircraft_idx)
     taper_ratio = InputValidate.get_value(df_aircraft,"$wing_type Taper Ratio",aircraft_idx)
-    b = InputValidate.get_value(df_aircraft,"$wing_type Span",aircraft_idx)
-    S = InputValidate.get_value(df_aircraft,"$wing_type Area",aircraft_idx)
+    b = uconvert(u"m", InputValidate.get_value(df_aircraft,"$wing_type Span",aircraft_idx))
+    S = uconvert(u"m^2", InputValidate.get_value(df_aircraft,"$wing_type Area",aircraft_idx))
     aerofoil = InputValidate.get_value(df_aircraft,"$wing_type Airfoil",aircraft_idx)
     sweep = InputValidate.get_value(df_aircraft,"$wing_type Quarterchord Sweep",aircraft_idx)
     root_twist = InputValidate.get_value(df_aircraft,"$wing_type Setting Angle",aircraft_idx)
     tip_twist = InputValidate.get_value(df_aircraft,"$wing_type Twist Angle",aircraft_idx)
     dihedral = InputValidate.get_value(df_aircraft,"$wing_type Dihedral",aircraft_idx)
 
+    # Number of spanwsie changes specified
+    n_change = 2
+
     # Get chord
     c_root = 2*S/(b*(1+taper_ratio))
     c_tip = taper_ratio * c_root
-    chords = LinRange(c_root, c_tip, n)
+    chords = LinRange(c_root, c_tip, n_change)
 
     # Get halfsapn
-    bs = fill(b/2/(n-1), n-1)
+    bs = fill(b/2/(n_change-1), n_change-1)
 
     # Get twist, dihedral and sweep
-    twists = LinRange(root_twist, tip_twist, n)
-    dihedrals = fill(dihedral, n-1)
-    sweeps = fill(sweep, n-1)
+    twists = LinRange(root_twist, tip_twist, n_change)
+    dihedrals = fill(dihedral, n_change-1)
+    sweeps = fill(sweep, n_change-1)
 
     if occursin(r"(?i)^NACA\d{4}$", aerofoil)
-        x1 = aerofoil[5]
-        x2 = aerofoil[6]
-        x3 = aerofoil[7]
-        x4 = aerofoil[8]
-        foil = fill(naca4(x1,x2,x3,x4))
+        x1 = parse(Int, aerofoil[5])
+        x2 = parse(Int, aerofoil[6])
+        x3 = parse(Int, aerofoil[7])
+        x4 = parse(Int, aerofoil[8])
+        foil = naca4(x1,x2,x3,x4)
     else
         foil = AeroFuse.AircraftGeometry.read_foil("./airfoil_database/$aerofoil.dat") 
     end
 
     # Create wing
     wing = Wing(
-        foils     = fill(foil, n),
+        foils     = fill(foil, n_change),
         chords    = ustrip.(chords), # Design variables
         twists    = ustrip.(twists),
-        spans     = ustrip.(bs), # Normalizing halfspan to 1
+        spans     = ustrip.(bs),
         dihedrals = ustrip.(dihedrals),
         sweeps    = ustrip.(sweeps), # Quarter-chord sweep
+        position  = ustrip.(positions),
+        angle     = angle,
+        axis      = axis,
         w_sweep   = 0.25,
-        symmetry  = true
+        symmetry  = symmetry
     )
 
     # Meshing
     wing_mesh = WingMesh(
-        wing, fill(2, n - 1), 6, 
+        wing, fill(n_span,n_change-1), n_chord, 
         span_spacing = Cosine(),
     )
 
@@ -111,32 +155,102 @@ end
 """
 function run_aero_analysis(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int)
     # Key variables
-    MTOW = InputValidate.get_value(df_aircraft,"MTOW",aircraft_idx)
+    MTOW = uconvert(u"kg", InputValidate.get_value(df_aircraft,"MTOW",aircraft_idx))
     g = uconvert(u"m/s^2", 1*u"ge") # Gravitational acceleration constant
-    n_vars = 64 # Number of discretisation
+    n_span = 20 # Number of spanwise discretisation
+    n_chord = 8 # Number of chordwise discretisation
 
-    # HT and VT sizing
-    
+    # Obtain wing position
+    fuselage_length = uconvert(u"m", InputValidate.get_value(df_aircraft,"Fuselage Length",aircraft_idx))
+    diameter = uconvert(u"m", InputValidate.get_value(df_aircraft,"Diameter",aircraft_idx))
+    wing_x_pos = InputValidate.get_value(df_aircraft,"Wing MAC Location (Relative to Fuselage Length)",aircraft_idx) * fuselage_length
+    wing_z_pos = InputValidate.get_value(df_aircraft,"Wing Root Chord Location (Relative to Fuselage Centerline, Normalised by Radius)",aircraft_idx) * diameter / 2
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Wing Position",value=(wing_x_pos,0.0*u"m",wing_z_pos),N_config=N_aircraft,col=aircraft_idx)
 
     # Wing calculation
-    (wing, wing_mesh) = initiate_wing_mesh(df_aircraft,aircraft_idx,"Wing",n_vars)
-    Sw = projected_area(wing_mesh) # Reference area
+    (wing, wing_mesh) = initiate_wing_mesh(df_aircraft,aircraft_idx,"Wing",n_span,n_chord)
+    Sw = projected_area(wing_mesh) # Reference area    
 
-    # HT calculation
+    ###HT and VT calculation
+    # Get the key values (dimensions and volumetric coefficient)
+    c_mean = mean_aerodynamic_chord(wing_mesh) *u"m"
+    bref = span(wing_mesh) * u"m"
+    HT_Vbar = InputValidate.get_value(df_aircraft,"VH",aircraft_idx)
+    VT_Vbar = InputValidate.get_value(df_aircraft,"VV",aircraft_idx)
+
+    # Get the dimensions
+    HT_x_pos = InputValidate.get_value(df_aircraft,"HT MAC Location (Relative to Fuselage Length)",aircraft_idx) * fuselage_length
+    HT_AR = InputValidate.get_value(df_aircraft,"HT AR",aircraft_idx)
+    VT_x_pos = InputValidate.get_value(df_aircraft,"VT MAC Location (Relative to Fuselage Length)",aircraft_idx) * fuselage_length
+    VT_AR = InputValidate.get_value(df_aircraft,"VT AR",aircraft_idx)
+
+    # Calculate HT and VT properties
+    S_HT = HT_Vbar * Sw*u"m^2" * c_mean / (HT_x_pos-wing_x_pos)
+    b_HT = sqrt(HT_AR * S_HT)
+    S_VT = VT_Vbar * Sw*u"m^2" * bref / (VT_x_pos-wing_x_pos)
+    b_VT = sqrt(VT_AR * S_VT)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="HT Area",value=S_HT,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="HT Span",value=b_HT,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="VT Area",value=S_VT,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="VT Span",value=b_VT,N_config=N_aircraft,col=aircraft_idx)
+
+    # Calcualte vertical position (based on the assumption that the tail follows the afterbody upsweep)
+    HT_z_pos = InputValidate.get_value(df_aircraft,"HT Root Chord Location (Relative to Span of VT)",aircraft_idx) * b_VT
+    tail_angle = InputValidate.get_value(df_aircraft,"Afterbody Upsweep Angle",aircraft_idx)
+    nose_x_end = InputValidate.get_value(df_aircraft,"Nose Length",aircraft_idx)
+    tail_x_start = nose_x_end + InputValidate.get_value(df_aircraft,"Cabin Length",aircraft_idx)
+    VT_z_pos = (VT_x_pos-tail_x_start)*tand(tail_angle) - (diameter / 2)
+    HT_z_pos = HT_z_pos + VT_z_pos
+
+    # Save data into dataframe
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="HT Position",value=(HT_x_pos,0.0*u"m",HT_z_pos),N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="VT Position",value=(VT_x_pos,0.0*u"m",VT_z_pos),N_config=N_aircraft,col=aircraft_idx)
+
+    # HT and VT calculation
+    (HT, HT_mesh) = initiate_wing_mesh(df_aircraft,aircraft_idx,"HT",n_span,n_chord)
+    (VT, VT_mesh) = initiate_wing_mesh(df_aircraft,aircraft_idx,"VT",n_span,n_chord)
+
+    # Initiate Fuselage
+    nose_end = nose_x_end / fuselage_length
+    rear_start = tail_x_start / fuselage_length
+    fuse = HyperEllipseFuselage(
+        radius = ustrip(diameter) / 2.0,
+        length = ustrip(fuselage_length),
+        x_a = ustrip(nose_end),
+        x_b = ustrip(rear_start),
+        d_rear = ustrip(VT_z_pos),
+        c_nose = 1.5,
+        c_rear = 1.5,
+    )
+
+    #r()
+
+    ## Coordinates
+    #Plots.plot(
+    #    aspect_ratio = 1,
+    #   camera = (30, 30),
+    #    zlim = span(wing) .* (-0.5, 0.5),
+    #    size = (800, 600)
+    #)
+    #Plots.plot!(wing_mesh, label = "Wing")
+    #Plots.plot!(HT_mesh, label = "HT")
+    #Plots.plot!(VT_mesh, label = "VT")
+    #Plots.plot!(fuse, label = "Fuselage")
+
+    #savefig("SamplePlane.png") 
 
     row_idx = findfirst(==("Stage"),df_mission[:,1])
     cruise_condition = findall(==("Cruise"),skipmissing(collect(df_mission[row_idx, :])))
+    loiter_condition = findall(==("Loiter"),skipmissing(collect(df_mission[row_idx, :])))
+    cruiseloiter_condition = vcat(cruise_condition,loiter_condition)
 
-    for col in cruise_condition
+    for col in cruiseloiter_condition
         alpha = InputValidate.get_value(df_mission,"α",col)
         ρ = InputValidate.get_value(df_mission,"ρ",col)
         V = uconvert(u"m/s",InputValidate.get_value(df_mission,"Velocity",col))
 
         # Get target CL at cruise
         CL_cruise = ustrip((MTOW*alpha*g) / (0.5*ρ*V^2*Sw))  # Target lift coefficient
-        print("CL_cruise: \n")
-        print(CL_cruise)
-        print("\n")
 
         refs = References(
             speed     = ustrip(V),
@@ -149,21 +263,23 @@ function run_aero_analysis(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
 
         # Find angle of attack which matches target CL
         α0 = find_zero(4.0, Roots.Order0()) do α
-            sys = make_case(α, wing_mesh, refs)
-            CL_cruise - get_forces(sys, wing_mesh).CL
+            sys = make_case(α, wing_mesh, HT_mesh, VT_mesh, refs)
+            CL_cruise - get_forces(sys, wing_mesh, HT_mesh, VT_mesh, fuse).CL
         end
 
-        print("α0:\n")
-        print(α0)
-        print("\n")
+        sys = make_case(α0, wing_mesh, HT_mesh, VT_mesh, refs)
+        init = get_forces(sys, wing_mesh, HT_mesh, VT_mesh, fuse)
 
-        sys = make_case(α0, wing_mesh, refs)
-        init = get_forces(sys, wing_mesh)
-        print_coefficients(sys)
-        print(init)
+        df_mission = InputValidate.df_update_or_append(df=df_mission,label="LD",value=init.L_D,N_config=N_stages,col=col)
+        df_mission = InputValidate.df_update_or_append(df=df_mission,label="CD",value=init.CD,N_config=N_stages,col=col)
     end
 
-    return df_aircraft
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Wing Mesh",value=wing_mesh,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="HT Mesh",value=HT_mesh,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="VT Mesh",value=VT_mesh,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Fuselage Shape",value=fuse,N_config=N_aircraft,col=aircraft_idx)
+
+    return (df_aircraft, df_mission)
 end
 
 end

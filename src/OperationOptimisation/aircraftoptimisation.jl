@@ -127,7 +127,7 @@ function aircraft_design_flow(;opt_list::DataFrame,df_aircraft::DataFrame,N_airc
     # Update fuselage information based on the number of passengers
     (df_aircraft, df_payload) = fuselage_sizing(df_aircraft = df_aircraft,N_aircraft = N_aircraft, aircraft_idx = aircraft_idx, df_payload=df_payload, N_payload=N_payload, payload_col=payload_idx)
 
-    df_aircraft = AircraftAero.run_aero_analysis(df_aircraft = df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
+    (df_aircraft, df_mission) = AircraftAero.run_aero_analysis(df_aircraft = df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
 
 end
 
