@@ -159,11 +159,10 @@ function WS_init(;WS,velocity_list::DataFrame,df_aircraft::DataFrame,aircraft_id
     return df_WS
 end
 
-function update_design(;WS_max, TW_max, df_aircraft::DataFrame, N_aircraft::Int, aircraft_idx::Int)
+function update_design(;WS_max, TW_max, df_aircraft::DataFrame, N_aircraft::Int, aircraft_idx::Int,df_mission::DataFrame,N_stages::Int)
     MTOW = InputValidate.get_value(df_aircraft,"MTOW",aircraft_idx)
     AR = InputValidate.get_value(df_aircraft,"Wing AR",aircraft_idx)
     g = uconvert(u"m/s^2", 1*u"ge") # Gravitational acceleration constant
-
 
     if MTOW > 150.0*1000*u"kg"
         cost_model = "Full_A"
@@ -180,11 +179,23 @@ function update_design(;WS_max, TW_max, df_aircraft::DataFrame, N_aircraft::Int,
     Tmax = MTOW * g * TW_max
     bref = sqrt(AR * Sref)
 
+    # Calculate the maximum velocity and mach number
+    vel_row = findfirst(==("Velocity"),df_mission[:,1])
+    alt_row = findfirst(==("Altitude"),df_mission[:,1])
+    df_mission_filtered = df_mission[:,ncol(df_mission)-N_stages+1:ncol(df_mission)]
+    max_idx = argmax(skipmissing(collect(df_mission_filtered[vel_row,:])))
+    V_max = df_mission_filtered[vel_row,max_idx]
+    (rho, P, _, _) = ISAdata(uconvert(u"m",df_mission_filtered[alt_row,max_idx]))
+    c_sound = upreferred(sqrt(1.4 * P / rho))
+    M_max = uconvert(u"m/s",V_max) / c_sound
+
     # Append to the aircraft data!
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Wing Area",value=Sref,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Wing Span",value=bref,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Tmax",value=Tmax,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Cost Model",value=cost_model,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Operating Velocity",value=V_max,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Operating Mach Number",value=M_max,N_config=N_aircraft,col=aircraft_idx)
 
     return df_aircraft
 end
@@ -209,7 +220,7 @@ function mission_design_flow(;design_param::DataFrame,velocity_list::DataFrame,d
         TW_max = ConstraintDiagram.quick_constraint(WS_max=WS_max,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
 
         # Initialise the aircraft design
-        df_aircraft = update_design(WS_max = WS_max, TW_max = TW_max, df_aircraft = df_aircraft, N_aircraft = N_aircraft, aircraft_idx = aircraft_idx)
+        df_aircraft = update_design(WS_max = WS_max, TW_max = TW_max, df_aircraft = df_aircraft, N_aircraft = N_aircraft, aircraft_idx = aircraft_idx,df_mission=df_mission,N_stages=N_stages)
 
         # Run the aircraft optimisation / perturbations
         AircraftOptimisation.aircraft_optimisation_start(design_param = design_param,df_pert = df_pert,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx,df_cost=df_cost)

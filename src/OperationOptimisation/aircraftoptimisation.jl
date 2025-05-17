@@ -18,7 +18,7 @@ include("costmodel.jl")
 
     Returns the updated dataframes
 """
-function fuselage_sizing(;df_aircraft::DataFrame,N_aircraft::Int, aircraft_idx::Int,df_payload::DataFrame,N_payload::Int,payload_col::Int)
+function fuselage_sizing(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_payload::DataFrame,N_payload::Int,payload_col::Int)
     # Get the volume required for cargo bay (baggage + cargo + droppable)
     W_baggage = df_payload[findfirst(==("Baggage Total Weight"),df_payload[:,1]),payload_col]
     W_cargo = df_payload[findfirst(==("Cargo Weight"),df_payload[:,1]),payload_col]
@@ -121,16 +121,90 @@ function fuselage_sizing(;df_aircraft::DataFrame,N_aircraft::Int, aircraft_idx::
 end
 
 """
+    `powerplant_sizing` - A function which sizes the powerplant's dimensions and weight (Rubber Engine)
+"""
+function powerplant_sizing(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int)
+    engine_type = InputValidate.get_value(df_aircraft,"Engine Type",aircraft_idx)
+
+    if engine_type == "Jet"
+        bpr = InputValidate.get_value(df_aircraft,"Engine Bypass Ratio",aircraft_idx)
+        Tmax = ustrip(InputValidate.get_value(df_aircraft,"Tmax",aircraft_idx)) / 1000.0 # In kN
+        M = ustrip(InputValidate.get_value(df_aircraft,"Operating Mach Number",aircraft_idx))
+        
+        # SFC for high bypass ratio
+        if bpr > 6
+            @warn "Bypass Ratio too big for this regression model! SFC will assume to be same as initial sizing, while weight and dimensions will be assumed using BPR = 6"
+            SFC_cruise = InputValidate.get_value(df_aircraft,"SFC_cruise",aircraft_idx)
+            SFC_loiter = InputValidate.get_value(df_aircraft,"SFC_loiter",aircraft_idx)
+            bpr = 6
+        else
+            SFC_cruise = 25*exp(-0.05*bpr) / 1000 *u"g / N / s"
+            SFC_loiter = SFC_cruise * (InputValidate.get_value(df_aircraft,"SFC_loiter",aircraft_idx) / InputValidate.get_value(df_aircraft,"SFC_cruise",aircraft_idx))
+        end
+
+        # Afterburner or non-afterburner engines
+        if bpr < 1
+            weight = 11.1*Tmax^1.1*M^0.25*exp(-0.81*bpr)*u"kg"
+            length = 0.68*Tmax^0.4*M^0.2*u"m"
+            diameter = 0.11*Tmax^0.5*exp(0.04*bpr)*u"m"
+            SFC_cruise = 30*exp(-0.186*bpr) / 1000 *u"g / N / s"
+            SFC_loiter = SFC_cruise * (InputValidate.get_value(df_aircraft,"SFC_loiter",aircraft_idx) / InputValidate.get_value(df_aircraft,"SFC_cruise",aircraft_idx))
+        else
+            weight = 14.7*Tmax^1.1*exp(-0.045*bpr)*u"kg"
+            length = 0.49*Tmax^0.4*M^0.2*u"m"
+            diameter = 0.15*Tmax^0.5*exp(0.04*bpr)*u"m"
+        end
+    else
+        # Get the power
+        Pmax = ustrip(InputValidate.get_value(df_aircraft,"Tmax",aircraft_idx)) / 1000.0 # In kW
+
+        # No data on SFC, just use initial sizing data
+        SFC_cruise = InputValidate.get_value(df_aircraft,"SFC_cruise",aircraft_idx)
+        SFC_loiter = InputValidate.get_value(df_aircraft,"SFC_loiter",aircraft_idx)
+
+        if engine_type == "Turboprop"
+            if Pmax < 300
+                @warn "Power is below the applicable range, the data is now being extrapolated. Proceed with caution"
+            elseif Pmax > 3728
+                @warn "Power is above the applicable range, the data is now being extrapolated. Proceed with caution"
+            end
+
+            weight = 0.96*Pmax^0.803*u"kg"
+            length = 0.12*Pmax^0.373*u"m"
+            diameter = 0.25*Pmax^0.120*u"m"
+        else
+            weight = 3.12*Pmax^0.780*u"kg"
+            length = 0.11*Pmax^0.424*u"m"
+            diameter = 0.8*u"m"
+        end
+    end
+
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Engine Weight Estimate",value=weight,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Engine Length Estimate",value=length,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Engine Diameter Estimate",value=diameter,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Engine SFC Cruise Estimate",value=SFC_cruise,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Engine SFC Loiter Estimate",value=SFC_loiter,N_config=N_aircraft,col=aircraft_idx)
+
+    return df_aircraft
+end
+
+"""
     `aircraft_design_flow` - A function which runs the design workflow
 """
 function aircraft_design_flow(;opt_list::DataFrame,df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,payload_idx::Int,df_cost_model::DataFrame)
     # Update fuselage information based on the number of passengers
     (df_aircraft, df_payload) = fuselage_sizing(df_aircraft = df_aircraft,N_aircraft = N_aircraft, aircraft_idx = aircraft_idx, df_payload=df_payload, N_payload=N_payload, payload_col=payload_idx)
 
-    (df_aircraft, df_mission) = AircraftAero.run_aero_analysis(df_aircraft = df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
+    # More refined update for weights
+    df_aircraft = powerplant_sizing(df_aircraft = df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx)
 
+    # Given the wing, fuselage information, calcualate aerodynamic properties + generate mesh
+    (df_aircraft, df_mission) = AircraftAero.run_aero_analysis(df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
 end
 
+"""
+    `aircraft_optimisation_start` - A function which starts the optimisation process for design (with perturbation first)
+"""
 function aircraft_optimisation_start(;design_param::DataFrame,df_pert::DataFrame,df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,payload_idx::Int,df_cost::DataFrame)
     # List of perturbation / optimisation parameters
     pert_list = design_param[findall(==("Perturbations"),design_param[:,:Type]),:]

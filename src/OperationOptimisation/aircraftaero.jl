@@ -223,6 +223,9 @@ function run_aero_analysis(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
         c_rear = 1.5,
     )
 
+    # Initiate Nacelles
+    
+
     #r()
 
     ## Coordinates
