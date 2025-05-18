@@ -2,6 +2,8 @@ Assumptions,Category,Units,Logic,Mandatory,Variable Type,Append
 PlaneType,Aircraft,,Data:PlaneRef,TRUE,String,Jet transport
 Regulations,Aircraft,,Data:Regulations,TRUE,String,FAR25 (Commercial)
 Engine Type,Aircraft,,"Match:""(?i)\b(Jet|Turboprop|Propeller)\b""",TRUE,String,Jet
+Engine Mounting Position,Aircraft,,"Match:""(?i)\b(Wing|Tail)\b""",TRUE,String,Wing
+Engine Position from Fuselage Normalised by Engine Diameter,Aircraft,,>=0,TRUE,Float64,2
 Number of Engines,Aircraft,,,TRUE,Int,2
 Engine Bypass Ratio,Aircraft,,"Req:(""Engine Type"",""(?i)\b(Jet)\b"");>=0",FALSE,Float64,10
 Engine Propeller Type,Aircraft,,"Req:(""Engine Type"",""(?i)\b(Turboprop|Propeller)\b"")",FALSE,String,

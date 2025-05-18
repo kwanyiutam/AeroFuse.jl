@@ -11,6 +11,27 @@ using Plots
 # Include the InputValidate module
 include("inputvalidate.jl")
 
+
+#### Additional functions for engine (nacelles)
+parasitic_drag_coefficient_eng(eng :: HyperEllipseFuselage, refs :: References, x_tr :: Real, ts = 0:0.01:1) = wetted_area_drag_coefficient(eng, x_tr, refs.density, refs.speed, mach_number(refs), refs.viscosity, refs.area, ts)
+
+form_factor_engine(f) = 1 + 0.35/f
+
+form_factor(eng :: HyperEllipseFuselage) = form_factor_engine(eng.length / eng.radius)
+
+function wetted_area_drag_coefficient(eng :: HyperEllipseFuselage, x_tr, ρ, V, M, μ, S_ref, ts = 0:0.01:1)
+    # Fuselage quantities
+    L = eng.length
+    S_wet = wetted_area(eng, ts) 
+    Kf = form_factor(eng)
+    fM = (1 - 0.08M^1.45)
+
+    # Parasitic drag coefficient
+    CDp = AeroFuse.parasitic_drag_coefficient(L, x_tr, ρ, V, M, μ, S_ref, S_wet, Kf, fM)
+
+    return CDp
+end
+
 """
     `make_case` - A function which runs VLM
 
@@ -38,7 +59,7 @@ end
 
     return the forces
 """
-function get_forces(system, wing, HT, VT, fuse)
+function get_forces(system, wing, HT, VT, fuse, eng_save, CD_upsweep)
     # Evaluate aerodynamic coefficients
     CDi, CY, CL, Cl, Cm, Cn = nearfield(system)
     # CDi, _, _ = farfield(system)
@@ -61,7 +82,12 @@ function get_forces(system, wing, HT, VT, fuse)
     # Fuselage viscous drag
     CDv_F = parasitic_drag_coefficient(fuse, system.reference, 0.05)
 
-    CDv = CDv + CDv_HT + CDv_VT + CDv_F
+    CDv_E = 0
+    for i in eachindex(eng_save)
+        CDv_E = CDv_E + parasitic_drag_coefficient_eng(eng_save[i], system.reference, 0.001)
+    end
+
+    CDv = CDv + CDv_HT + CDv_VT + CDv_F + CDv_E + CD_upsweep
 
     return (CDi = CDi, CDv = CDv, CDv_HT = CDv_HT, CDv_VT = CDv_VT, CDv_F = CDv_F, CD = CDi + CDv, CL = CL, L_D = CL / (CDi + CDv))
 end
@@ -224,14 +250,58 @@ function run_aero_analysis(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
     )
 
     # Initiate Nacelles
-    
+    N_engines = InputValidate.get_value(df_aircraft,"Number of Engines",aircraft_idx)
+    engine_diameter = uconvert(u"m", InputValidate.get_value(df_aircraft,"Engine Diameter Estimate",aircraft_idx))
+    engine_length = uconvert(u"m", InputValidate.get_value(df_aircraft,"Engine Length Estimate",aircraft_idx))
+    engine_mount = InputValidate.get_value(df_aircraft,"Engine Mounting Position",aircraft_idx)
+    engine_sep = InputValidate.get_value(df_aircraft,"Engine Position from Fuselage Normalised by Engine Diameter",aircraft_idx)
+    engine_z_pos = wing_z_pos - engine_diameter
 
-    #r()
+    if engine_mount == "Wing"
+        engine_x_pos = wing_x_pos
+    elseif engine_mount == "Tail"
+        engine_x_pos = fuselage_length
+    else
+        throw(ArgumentError("Invalid Argument, cannot find the engine mount position of $engine_mount"))
+    end
+
+    eng_save = []
+    N_engine_half = floor(N_engines/2)
+  
+    for i in 1:N_engines
+        engine_y_pos = -diameter/2.0 -((N_engine_half-i+1)*engine_sep+0.5+N_engine_half-i)*engine_diameter # Fuselage and engine separated by two diameter length
+
+        if i > N_engine_half
+            engine_y_pos = engine_y_pos + diameter + engine_sep*engine_diameter
+        end
+
+        if (i == N_engines) && (N_engines % 2 == 1)
+            engine_x_pos = fuselage_length
+            engine_y_pos = 0.0
+            engine_z_pos = VT_z_pos
+        end
+
+        position = [engine_x_pos,engine_y_pos,engine_z_pos]
+
+        eng = HyperEllipseFuselage(
+            radius = ustrip(engine_diameter) / 2.0,
+            length = ustrip(engine_length),
+            x_a = 0.1,
+            x_b = 0.8,
+            c_nose = 2,
+            c_rear = 2,
+            position = ustrip.(position),
+        )
+
+        push!(eng_save, eng)
+    end
+
+    #gr()
 
     ## Coordinates
     #Plots.plot(
     #    aspect_ratio = 1,
-    #   camera = (30, 30),
+    #    camera = (30, 30),
     #    zlim = span(wing) .* (-0.5, 0.5),
     #    size = (800, 600)
     #)
@@ -240,8 +310,16 @@ function run_aero_analysis(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
     #Plots.plot!(VT_mesh, label = "VT")
     #Plots.plot!(fuse, label = "Fuselage")
 
+    #for i in 1:N_engines
+    #    Plots.plot!(eng_save[i], label = "Engine $i")
+    #end
+
     #savefig("SamplePlane.png") 
 
+    # Add upsweep related drag
+    CD_upsweep = ustrip(3.83*(pi*diameter^2/(4*Sw))*deg2rad(tail_angle)^2.5)
+
+    # Get all conditions for cruise/loiter
     row_idx = findfirst(==("Stage"),df_mission[:,1])
     cruise_condition = findall(==("Cruise"),skipmissing(collect(df_mission[row_idx, :])))
     loiter_condition = findall(==("Loiter"),skipmissing(collect(df_mission[row_idx, :])))
@@ -265,22 +343,24 @@ function run_aero_analysis(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
         )
 
         # Find angle of attack which matches target CL
-        α0 = find_zero(4.0, Roots.Order0()) do α
+        α0 = find_zero(2.0, Roots.Order0()) do α
             sys = make_case(α, wing_mesh, HT_mesh, VT_mesh, refs)
-            CL_cruise - get_forces(sys, wing_mesh, HT_mesh, VT_mesh, fuse).CL
+            CL_cruise - get_forces(sys, wing_mesh, HT_mesh, VT_mesh, fuse, eng_save, CD_upsweep).CL
         end
 
         sys = make_case(α0, wing_mesh, HT_mesh, VT_mesh, refs)
-        init = get_forces(sys, wing_mesh, HT_mesh, VT_mesh, fuse)
+        init = get_forces(sys, wing_mesh, HT_mesh, VT_mesh, fuse, eng_save, CD_upsweep)
 
         df_mission = InputValidate.df_update_or_append(df=df_mission,label="LD",value=init.L_D,N_config=N_stages,col=col)
         df_mission = InputValidate.df_update_or_append(df=df_mission,label="CD",value=init.CD,N_config=N_stages,col=col)
+        df_mission = InputValidate.df_update_or_append(df=df_mission,label="CD0_Estimate",value=init.CDv,N_config=N_stages,col=col)
     end
 
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Wing Mesh",value=wing_mesh,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="HT Mesh",value=HT_mesh,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="VT Mesh",value=VT_mesh,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Fuselage Shape",value=fuse,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Engine Shape",value=eng_save,N_config=N_aircraft,col=aircraft_idx)
 
     return (df_aircraft, df_mission)
 end

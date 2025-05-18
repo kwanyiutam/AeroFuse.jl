@@ -182,8 +182,8 @@ function powerplant_sizing(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Engine Weight Estimate",value=weight,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Engine Length Estimate",value=length,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Engine Diameter Estimate",value=diameter,N_config=N_aircraft,col=aircraft_idx)
-    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Engine SFC Cruise Estimate",value=SFC_cruise,N_config=N_aircraft,col=aircraft_idx)
-    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Engine SFC Loiter Estimate",value=SFC_loiter,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="SFC Cruise Estimate",value=SFC_cruise,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="SFC Loiter Estimate",value=SFC_loiter,N_config=N_aircraft,col=aircraft_idx)
 
     return df_aircraft
 end

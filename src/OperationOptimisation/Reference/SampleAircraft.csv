@@ -1,8 +1,10 @@
 Assumptions,Units,Baseline Jet,Alternate Turboprop
 PlaneType,,Jet transport,Twin turboprop
 Regulations,,FAR25 (Commercial),FAR25 (Commercial)
-Number of Engines,,2,2
+Number of Engines,,2,3
 Engine Type,,Jet,Turboprop
+Engine Mounting Position,,Wing,Wing
+Engine Position from Fuselage Normalised by Engine Diameter,,2,2
 Engine Bypass Ratio,,10,
 Engine Propeller Type,,,Fixed Pitch
 Engine Propeller Efficiency,,,0.8
@@ -22,7 +24,7 @@ Wing CD0 Landing Penalty,,0.07,Baseline Jet
 Wing Airfoil,,NACA651412,Baseline Jet
 Wing Dihedral,degrees,2,Baseline Jet
 Wing Quarterchord Sweep,degrees,10,Baseline Jet
-Wing Taper Ratio,,OPT;Wing Taper Ratio;0;1,Baseline Jet
+Wing Taper Ratio,,0.3,Baseline Jet
 Wing Setting Angle,degrees,2,Baseline Jet
 Wing Twist Angle,degrees,0,Baseline Jet
 Wing MAC Location (Relative to Fuselage Length),,0.5,Baseline Jet
