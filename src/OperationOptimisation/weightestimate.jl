@@ -139,6 +139,70 @@ function fuselage_weight(df_aircraft, aircraft_idx)
     return uconvert(u"kg", ustrip(W_fus) * u"lb")
 end
 
+function fuel_calculation(df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int)
+    # Trapped fuel ratio (2%)
+    trapped_fuel = InputValidate.get_value(df_aircraft,"Trapped Fuel Ratio",aircraft_idx)
+
+    # Get old weight
+    fuel_weight = InputValidate.get_value(df_aircraft,"Fuel Weight",aircraft_idx)
+    MTOW = InputValidate.get_value(df_aircraft,"MTOW",aircraft_idx)
+
+    g = uconvert(u"m/s^2", 1*u"ge") # Gravitational acceleration constant
+    engine_type = InputValidate.get_value(df_aircraft,"Engine Type",aircraft_idx)
+
+    # Estimation for weight remaining
+    α = 1.0
+
+    for col in ncol(df_mission)-N_stages+1:ncol(df_mission)
+        stage = InputValidate.get_value(df_mission,"Stage",col)
+        V = uconvert(u"m/s", InputValidate.get_value(df_mission,"Velocity",col))
+
+        SFC_loiter = InputValidate.get_value(df_aircraft,"SFC_loiter",aircraft_idx)
+        SFC_cruise = InputValidate.get_value(df_aircraft,"SFC_cruise",aircraft_idx)
+
+        # SFC references
+        if engine_type != "Jet"
+            SFC_loiter = upreferred(SFC_loiter * V)
+            SFC_cruise = upreferred(SFC_cruise * V)
+        end
+
+        if stage == "Takeoff"
+            new_fraction = 0.97
+        elseif stage == "Climb"
+            new_fraction = 0.985
+        elseif stage == "Loiter"
+            LD = InputValidate.get_value(df_mission,"LD",col)
+            E = uconvert(u"s", InputValidate.get_value(df_mission,"Duration",col))
+            old_weight_fraction = InputValidate.get_value(df_mission,"Fuel Fraction",col)
+
+            new_fraction = exp(-(E*SFC_loiter*g) / LD)
+            df_mission = InputValidate.df_update_or_append(df=df_mission,label="Fuel Fraction",value=new_fraction,N_config=N_stages,col=col)
+        elseif stage == "Cruise"
+            LD = InputValidate.get_value(df_mission,"LD",col)
+            R = uconvert(u"m", InputValidate.get_value(df_mission,"Distance",col))
+            old_weight_fraction = InputValidate.get_value(df_mission,"Fuel Fraction",col)
+
+            new_fraction = exp(-(R*SFC_cruise*g) / (LD * V))
+            df_mission = InputValidate.df_update_or_append(df=df_mission,label="Fuel Fraction",value=new_fraction,N_config=N_stages,col=col)
+        else
+            new_fraction = 0.995
+        end
+
+        α *= new_fraction
+        df_mission = InputValidate.df_update_or_append(df=df_mission,label="Max_Mass_Ratio",value=α,N_config=N_stages,col=col)
+    end
+
+    new_fuel_weight = MTOW*(1.0 - α)*trapped_fuel
+
+    fuel_density = InputValidate.get_value(df_aircraft,"Fuel Density",aircraft_idx)
+    
+    fuel_tank_vol = (new_fuel_weight / fuel_density) * InputValidate.get_value(df_aircraft,"Fuel Volume Buffer",aircraft_idx)
+
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Fuel Weight",value=new_fuel_weight,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Fuel Tank Volume",value=new_fuel_weight,N_config=N_aircraft,col=aircraft_idx)
+
+    return (df_aircraft, df_mission)
+end
 
 """
     `weight_calculation` - A function which calculates a weight estimate
@@ -146,6 +210,9 @@ end
     return the weight estimation in dataframe
 """
 function weight_calculation(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,payload_idx::Int)
+    # Update fuel weight estimates
+    (df_aircraft, df_mission) = fuel_calculation(df_aircraft,N_aircraft,aircraft_idx,df_mission,N_stages)
+    
     # Aircraft wing weight
     W_wing = wing_weight(df_aircraft,aircraft_idx)
     
@@ -159,7 +226,7 @@ function weight_calculation(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx
     W_fus = fuselage_weight(df_aircraft, aircraft_idx)
 
     # Engine Weight
-    W_eng = InputValidate.get_value(df_aircraft,"Engine Weight Estimate",aircraft_idx)
+    W_eng = InputValidate.get_value(df_aircraft,"Engine Weight Estimate",aircraft_idx) * InputValidate.get_value(df_aircraft,"Number of Engines",aircraft_idx)
 
     W_total = W_wing + W_HT + W_VT + W_fus + W_eng
     print("Current: ")
@@ -168,6 +235,22 @@ function weight_calculation(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx
     print(InputValidate.get_value(df_aircraft,"Empty Weight",aircraft_idx))
     print("\n")
 
+    # Obtain fuel and paylaod weight to calculate the MTOW
+    W_fuel = InputValidate.get_value(df_aircraft,"Fuel Weight",aircraft_idx)
+    W_pl = InputValidate.get_value(df_payload,"Payload Weight",payload_idx)
+
+    MTOW = W_total + W_fuel + W_pl
+
+    print("Current MTOW: ")
+    print(MTOW)
+    print("\nPredicted: ")
+    print(InputValidate.get_value(df_aircraft,"MTOW",aircraft_idx))
+    print("\n")
+
+
+    # Update the weight values with new ones
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Empty Weight",value=W_total,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="MTOW",value=W_total,N_config=N_aircraft,col=aircraft_idx)
 
     return df_aircraft
 end

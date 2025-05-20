@@ -9,6 +9,9 @@ Engine Bypass Ratio,Aircraft,,"Req:(""Engine Type"",""(?i)\b(Jet)\b"");>=0",FALS
 Engine Propeller Type,Aircraft,,"Req:(""Engine Type"",""(?i)\b(Turboprop|Propeller)\b"")",FALSE,String,
 Engine Propeller Efficiency,Aircraft,,"Req:(""Engine Type"",""(?i)\b(Turboprop|Propeller)\b"");>=0;<=1",FALSE,Float64,
 Engine Propeller Disc Load,Aircraft,hp/ft^2,"Req:(""Engine Type"",""(?i)\b(Turboprop|Propeller)\b"");>=0",FALSE,Float64,
+Trapped Fuel Ratio,Aircraft,,>=1,TRUE,Float64,1.02
+Fuel Density,Aircraft,kg/m^3,>=0,TRUE,Float64,775
+Fuel Volume Buffer,Aircraft,,>=1,TRUE,Float64,1.05
 Swet/Sref,Aircraft,,>=2,TRUE,Float64,5
 Wing AR,Aircraft,,>=0,TRUE,Float64,10
 Oswald Efficiency,Aircraft,,>=0;<=1,TRUE,Float64,0.8

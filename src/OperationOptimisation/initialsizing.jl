@@ -204,8 +204,8 @@ end
 """
 function fuel_weight_fractions(;stage::String,engine_type::String,V_md,V_bar,LD_max,SFC_cruise,SFC_loiter,endurance = 0.0, range= 0.0)
     if engine_type != "Jet"
-        SFC_cruise = upreferred(SFC_cruise * V_bar * V_md)
-        SFC_loiter = upreferred(SFC_loiter * V_bar * V_md)
+        SFC_cruise = upreferred(SFC_cruise * V_bar * uconvert(u"m/s", V_md))
+        SFC_loiter = upreferred(SFC_loiter * V_bar * uconvert(u"m/s", V_md))
     end
 
     g = uconvert(u"m/s^2", 1*u"ge") # Gravitational acceleration constant
@@ -218,12 +218,12 @@ function fuel_weight_fractions(;stage::String,engine_type::String,V_md,V_bar,LD_
         @assert ustrip(range) > 0.0 "Range must be given!"
         # Convert units
         range = uconvert(u"m", range)
-        fraction = exp(-(range * SFC_cruise * g * (V_bar + V_bar^-3)) / (LD_max * V_md * 2))
+        fraction = exp(-(uconvert(u"m", range) * SFC_cruise * g * (V_bar + V_bar^-3)) / (LD_max * V_md * 2))
     elseif stage == "Loiter"
         @assert ustrip(endurance) > 0.0 "Endurance must be given!"
         # Convert units
         endurance = uconvert(u"s", endurance)
-        fraction = exp(-(endurance * SFC_loiter * g * (V_bar^2 + V_bar^-2)) / (LD_max * 2))
+        fraction = exp(-(uconvert(u"s", endurance) * SFC_loiter * g * (V_bar^2 + V_bar^-2)) / (LD_max * 2))
     else
         # assume mostly idle thrust, so descend condition
         fraction = 0.995
@@ -239,7 +239,7 @@ end
 """
 function fuel_ratio(;df_WS::DataFrame,WS_idx::Int,min_fuel_vel::DataFrame,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,save_info::Bool = false)
     # Trapped fuel ratio (2%)
-    trapped_fuel = 1.02
+    trapped_fuel = InputValidate.get_value(df_aircraft,"Trapped Fuel Ratio",aircraft_idx)
 
     # Get the minimum fuel columns
     min_fuel_stages = min_fuel_vel[:,"Saved Column"]
