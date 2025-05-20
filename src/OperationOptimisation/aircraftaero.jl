@@ -11,6 +11,15 @@ using Plots
 # Include the InputValidate module
 include("inputvalidate.jl")
 
+# Some functions for chord
+function root_chord(S,b,λ)
+    return 2*S/(b*(1+λ))
+end
+
+function chord_pos(y_halfspan,λ,c_root)
+    return (λ-1)*c_root*y_halfspan+c_root
+end
+
 
 #### Additional functions for engine (nacelles)
 parasitic_drag_coefficient_eng(eng :: HyperEllipseFuselage, refs :: References, x_tr :: Real, ts = 0:0.01:1) = wetted_area_drag_coefficient(eng, x_tr, refs.density, refs.speed, mach_number(refs), refs.viscosity, refs.area, ts)
@@ -92,6 +101,20 @@ function get_forces(system, wing, HT, VT, fuse, eng_save, CD_upsweep)
     return (CDi = CDi, CDv = CDv, CDv_HT = CDv_HT, CDv_VT = CDv_VT, CDv_F = CDv_F, CD = CDi + CDv, CL = CL, L_D = CL / (CDi + CDv))
 end
 
+function parse_aerofoil(aerofoil)
+    if occursin(r"(?i)^NACA\d{4}$", aerofoil)
+        x1 = parse(Int, aerofoil[5])
+        x2 = parse(Int, aerofoil[6])
+        x3 = parse(Int, aerofoil[7])
+        x4 = parse(Int, aerofoil[8])
+        foil = naca4(x1,x2,x3,x4)
+    else
+        foil = AeroFuse.AircraftGeometry.read_foil("./airfoil_database/$aerofoil.dat") 
+    end
+
+    return foil
+end
+
 function initiate_wing_mesh(df_aircraft,aircraft_idx,wing_type,n_span,n_chord)
     # Define
     if wing_type == "Wing"
@@ -128,8 +151,9 @@ function initiate_wing_mesh(df_aircraft,aircraft_idx,wing_type,n_span,n_chord)
     n_change = 2
 
     # Get chord
-    c_root = 2*S/(b*(1+taper_ratio))
+    c_root = root_chord(S,b,taper_ratio)
     c_tip = taper_ratio * c_root
+
     chords = LinRange(c_root, c_tip, n_change)
 
     # Get halfsapn
@@ -140,15 +164,7 @@ function initiate_wing_mesh(df_aircraft,aircraft_idx,wing_type,n_span,n_chord)
     dihedrals = fill(dihedral, n_change-1)
     sweeps = fill(sweep, n_change-1)
 
-    if occursin(r"(?i)^NACA\d{4}$", aerofoil)
-        x1 = parse(Int, aerofoil[5])
-        x2 = parse(Int, aerofoil[6])
-        x3 = parse(Int, aerofoil[7])
-        x4 = parse(Int, aerofoil[8])
-        foil = naca4(x1,x2,x3,x4)
-    else
-        foil = AeroFuse.AircraftGeometry.read_foil("./airfoil_database/$aerofoil.dat") 
-    end
+    foil = parse_aerofoil(aerofoil)
 
     # Create wing
     wing = Wing(
@@ -211,12 +227,16 @@ function run_aero_analysis(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
     VT_AR = InputValidate.get_value(df_aircraft,"VT AR",aircraft_idx)
 
     # Calculate HT and VT properties
-    S_HT = HT_Vbar * Sw*u"m^2" * c_mean / (HT_x_pos-wing_x_pos)
+    HT_arm = (HT_x_pos-wing_x_pos)
+    S_HT = HT_Vbar * Sw*u"m^2" * c_mean / HT_arm
     b_HT = sqrt(HT_AR * S_HT)
-    S_VT = VT_Vbar * Sw*u"m^2" * bref / (VT_x_pos-wing_x_pos)
+    VT_arm = (VT_x_pos-wing_x_pos)
+    S_VT = VT_Vbar * Sw*u"m^2" * bref / VT_arm
     b_VT = sqrt(VT_AR * S_VT)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="HT Tail Arm",value=HT_arm,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="HT Area",value=S_HT,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="HT Span",value=b_HT,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="VT Tail Arm",value=VT_arm,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="VT Area",value=S_VT,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="VT Span",value=b_VT,N_config=N_aircraft,col=aircraft_idx)
 

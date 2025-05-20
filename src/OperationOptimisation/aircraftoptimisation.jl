@@ -10,8 +10,11 @@ include("inputvalidate.jl")
 # Include the AircraftAero module
 include("aircraftaero.jl")
 
-# include the CostModel module
+# Include the CostModel module
 include("costmodel.jl")
+
+# Include the WeightEst module
+include("weightestimate.jl")
 
 """
     `fuselage_sizing` - A function which sizes the fuselage to the appropriate size
@@ -195,11 +198,14 @@ function aircraft_design_flow(;opt_list::DataFrame,df_aircraft::DataFrame,N_airc
     # Update fuselage information based on the number of passengers
     (df_aircraft, df_payload) = fuselage_sizing(df_aircraft = df_aircraft,N_aircraft = N_aircraft, aircraft_idx = aircraft_idx, df_payload=df_payload, N_payload=N_payload, payload_col=payload_idx)
 
-    # More refined update for weights
+    # More refined update for weights and sizes
     df_aircraft = powerplant_sizing(df_aircraft = df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx)
 
     # Given the wing, fuselage information, calcualate aerodynamic properties + generate mesh
     (df_aircraft, df_mission) = AircraftAero.run_aero_analysis(df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
+
+    # Estimate MTOW (and CG in the future)
+    df_aircraft = WeightEst.weight_calculation(df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx)
 end
 
 """
