@@ -371,10 +371,11 @@ function furnishings_weight(df_aircraft::DataFrame, aircraft_idx::Int,df_mission
     # Number of crew
     N_fc = InputValidate.get_value(df_payload, "Flight Crew", payload_idx)
     N_cc = InputValidate.get_value(df_payload, "Cabin Crew", payload_idx)
-    N_p = InputValidate.get_value(df_payload, "Passengers", payload_idx)
+    N_pax = InputValidate.get_value(df_payload, "Passengers", payload_idx)
+    N_p = N_pax + N_fc + N_cc
 
     # Seat Weight (in lbs)
-    W_pax_seat = N_p * 32.0 # Passenger
+    W_pax_seat = N_pax * 32.0 # Passenger
     W_fc_seat = N_fc * 60.0 # Flight Crew
     W_cc_seat = N_cc * 11.0 # Cabin Crew
 
@@ -423,11 +424,16 @@ function furnishings_weight(df_aircraft::DataFrame, aircraft_idx::Int,df_mission
     return uconvert(u"kg", ustrip(W_furn) * u"lb")
 end
 
-function air_conditioning_weight(df_aircraft::DataFrame, aircraft_idx::Int)
-    W_dg = InputValidate.get_value(df_aircraft,"MTOW",aircraft_idx)
+function air_conditioning_weight(df_aircraft::DataFrame, aircraft_idx::Int,df_payload::DataFrame,payload_idx::Int)
+    N_p = InputValidate.get_value(df_payload, "Passengers", payload_idx) + InputValidate.get_value(df_payload, "Flight Crew", payload_idx) + InputValidate.get_value(df_payload, "Cabin Crew", payload_idx)
+    W_uav = 1400.0 # lbs assumption
+    d = InputValidate.get_value(df_aircraft,"Diameter",aircraft_idx)
+    l = InputValidate.get_value(df_aircraft,"Cabin Length",aircraft_idx) # Yes I am aware of the flight crew... No I am not going to include it
+    V_pr = uconvert(u"ft^3", pi*(d/2)^2*l)
 
+    W_airc = 62.36 * N_p^0.25 * (V_pr * 10^-3)^0.604 * W_uav^0.1
 
-    return 0.265 * W_uav^0.75
+    return uconvert(u"kg", ustrip(W_airc) * u"lb")
 end
 
 function anti_icing_weight(df_aircraft::DataFrame, aircraft_idx::Int)
@@ -443,7 +449,7 @@ function handling_gear_weight(df_aircraft::DataFrame, aircraft_idx::Int)
 
     if occursin(r"(?i)Military",regulations)
         d = InputValidate.get_value(df_aircraft,"Diameter",aircraft_idx)
-        l = InputValidate.get_value(df_aircraft,"Cabin Length",aircraft_idx) # Assume same as MTOW
+        l = InputValidate.get_value(df_aircraft,"Cabin Length",aircraft_idx)
         A_f = uconvert(u"ft^2", d*l)
 
         W_hg = ustrip(2.4 * A_f) * u"lb"
@@ -573,13 +579,16 @@ function weight_calculation(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx
     # Furnishing
     W_furn = furnishings_weight(df_aircraft, aircraft_idx,df_mission,N_stages,df_payload,payload_idx)
 
+    # Air Conditioning
+    W_airc = air_conditioning_weight(df_aircraft, aircraft_idx,df_payload,payload_idx)
+
     # Anti-ice
     W_ai = anti_icing_weight(df_aircraft, aircraft_idx)
 
     # Handling gear
     W_hg = handling_gear_weight(df_aircraft, aircraft_idx)
 
-    W_total = W_wing + W_HT + W_VT + W_fus + W_eng + W_mlg + W_nlg + W_ncl + W_ec + W_estart + W_fs + W_fc + W_inst + W_hyd + W_av + W_furn + W_ai + W_hg
+    W_total = W_wing + W_HT + W_VT + W_fus + W_eng + W_mlg + W_nlg + W_ncl + W_ec + W_estart + W_fs + W_fc + W_inst + W_hyd + W_av + W_furn + W_airc + W_ai + W_hg
     print("Current: ")
     print(W_total)
     print("\nPredicted: ")
