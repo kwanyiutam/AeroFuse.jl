@@ -17,6 +17,13 @@ include("parsedata.jl")
 # Include the InputValidate module
 include("inputvalidate.jl")
 
+function utilisation_calc(time)
+    time = uconvert(u"hr", time)
+    value = 6100.0 - 3100.0 * ustrip(time) ^ -0.3342
+
+    return value
+end
+
 function cost_variables(;variables::Vector{String}, units, df_aircraft::DataFrame, aircraft_idx::Int, df_mission::DataFrame, N_stages::Int, df_payload::DataFrame, payload_idx::Int)
     if length(variables) != length(units)
         throw(ArgumentError("Variables and Units vector do not match! Please check..."))
@@ -28,13 +35,60 @@ function cost_variables(;variables::Vector{String}, units, df_aircraft::DataFram
         var = variables[var_idx]
 
         if var == "Fuel Weight"
-            value = df_aircraft[findfirst(==("Fuel Weight"),df_aircraft[:,1]),aircraft_idx]
+            value = InputValidate.get_value(df_aircraft,"Fuel Weight",aircraft_idx)
         elseif var == "Cruise Time"
             value = sum(df_mission[findfirst(==("Duration"),df_mission[:,1]),ncol(df_mission)-N_stages+1:ncol(df_mission)])
         elseif var == "Number of Cabin Crew"
-            value = df_payload[findfirst(==("Cabin Crew"),df_payload[:,1]),payload_idx]
+            value = InputValidate.get_value(df_payload,"Cabin Crew",payload_idx)
         elseif var == "MTOW"
-            value = df_aircraft[findfirst(==("MTOW"),df_aircraft[:,1]),aircraft_idx]
+            value = InputValidate.get_value(df_aircraft,"MTOW",aircraft_idx)
+        elseif var == "Fuel Tank Volume"
+            value = InputValidate.get_value(df_aircraft,"Fuel Tank Volume",aircraft_idx)
+        elseif var == "Fleet Size"
+            value = 1 # Assume fleet size of 1
+        elseif var == "Utilisation"
+            tb = sum(df_mission[findfirst(==("Duration"),df_mission[:,1]),ncol(df_mission)-N_stages+1:ncol(df_mission)])
+            value = utilisation_calc(tb) / 365.25 # Utilisation per day, so divide by days
+        elseif var == "AFD"
+            # For AFD, assume same as duration of flight time, BUT later can define
+            value = sum(df_mission[findfirst(==("Duration"),df_mission[:,1]),ncol(df_mission)-N_stages+1:ncol(df_mission)])
+        elseif var == "Aircraft Cost (in Million)"
+            value = 0.0 # Define as 0 for now, should be replaced soon
+        elseif var == "Age of Type of Aircraft"
+            value = 0.0 *u"yr" # Assume new type of aircraft
+        elseif var == "Number of Seats"
+            # Assume same as number of passengers
+            value = InputValidate.get_value(df_payload,"Passengers",payload_idx)
+        elseif var == "Average age"
+            value = 0.0 *u"yr" # Assume new aircraft
+        elseif var == "Number of Tires"
+            value = InputValidate.get_value(df_aircraft,"Number of Tires",aircraft_idx)
+        elseif var == "Number of Engines"
+            value = InputValidate.get_value(df_aircraft,"Number of Engines",aircraft_idx)
+        elseif var == "Thrust"
+            thrust = InputValidate.get_value(df_aircraft,"Tmax",aircraft_idx)
+            engine_type = InputValidate.get_value(df_aircraft,"Engine Type",aircraft_idx)
+
+            if engine_type != "Jet"
+                # Assume for now, thrust = power * eff / V, but likely improvements needed to consider non-jet engine costs
+                V = InputValidate.get_value(df_aircraft,"Operating Velocity",aircraft_idx)
+                prop_eff = InputValidate.get_value(df_aircraft,"Engine Propeller Efficiency",aircraft_idx)
+                value = thrust * prop_eff / uconvert(u"m/s", V) # Not actually thrust, but rather Power
+            else
+                value = thrust
+            end
+        elseif var == "Fuselage Length"
+            value = InputValidate.get_value(df_aircraft,"Fuselage Length",aircraft_idx)
+        elseif var == "Fuselage Diameter"
+            value = InputValidate.get_value(df_aircraft,"Diameter",aircraft_idx)
+        elseif var == "Mach Number"
+            value = InputValidate.get_value(df_aircraft,"Operating Mach Number",aircraft_idx)
+        elseif var == "Range"
+            value = InputValidate.get_value(df_aircraft,"Maximum Range",aircraft_idx)
+        elseif var == "Wing Area"
+            value = InputValidate.get_value(df_aircraft,"Wing Area",aircraft_idx)
+        elseif var == "Wing Span"
+            value = InputValidate.get_value(df_aircraft,"Wing Span",aircraft_idx)
         else
             throw(ArgumentError("Invalid Cost Variable $var ! This variable has not been defined in the cost model, please update the cost_variables function!"))
         end
@@ -132,14 +186,23 @@ function cost_calc(;df_cost_model::DataFrame, df_aircraft::DataFrame, aircraft_i
 
     # Get the constant column and variables
     constant_col_idx = findfirst(==("Constant"), DataFrames.names(df_cost_model))
-    variable_col_idx = constant_col_idx+1:(ncol(df_cost_model)-1)
-    variables = DataFrames.names(df_cost_model)[variable_col_idx] # Factor column is at the back
+    variable_col_idx = constant_col_idx+1:(ncol(df_cost_model)-1) # Factor column is at the back, so ignore last col
+    variables = DataFrames.names(df_cost_model)[variable_col_idx]
     units = collect(df_cost_model[unit_row_idx,variable_col_idx])
 
+    # Obtain cost-related parameters
     values = cost_variables(variables = variables, units = units, df_aircraft=df_aircraft, aircraft_idx=aircraft_idx, df_mission=df_mission, N_stages=N_stages, df_payload=df_payload, payload_idx=payload_idx)
     
     # Replace missing values with zero
     values = ustrip.(coalesce.(values, 0.0))
+
+    # If Aircraft Cost has to be specified
+    if "Aircraft Cost (in Million)" in variables
+        ac_cost_row = findfirst(value -> occursin(r"(?i)^Aircraft Cost",value),df_cost_model[:,1])
+
+        # Prioritise the cost row, calculate it first
+        cost_rows = vcat(ac_cost_row, setdiff(cost_rows, ac_cost_row))
+    end
 
     for idx in cost_rows
         component = df_cost_model[idx, 1]
@@ -169,6 +232,12 @@ function cost_calc(;df_cost_model::DataFrame, df_aircraft::DataFrame, aircraft_i
 
         df_row_idx = findfirst(==(component), df_results[:,1])
         df_results[df_row_idx,"Cost (USD)"] = cost * df_cost_model[idx, "Factor"]
+
+        if occursin(r"(?i)^Aircraft Cost",component)
+            cost_idx = findfirst(==("Aircraft Cost (in Million)"),variables)
+            values[cost_idx] = df_results[df_row_idx,"Cost (USD)"] / 10.0^6 # in million
+            print(values)
+        end
     end
 
     total_cost = sum(collect(df_results[:,"Cost (USD)"]))

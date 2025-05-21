@@ -190,13 +190,17 @@ function update_design(;WS_max, TW_max, df_aircraft::DataFrame, N_aircraft::Int,
     c_sound = upreferred(sqrt(1.4 * P / rho))
     M_max = uconvert(u"m/s",V_max) / c_sound
 
+    # Calculate the design cruise range
+    dist_row = findfirst(==("Distance"),df_mission[:,1])
+    range_max = maximum(skipmissing(collect(df_mission_filtered[dist_row,:])))
+
     # Calculate maximum landing weight
     mlw_row = findfirst(==("Max_Mass_Ratio"),df_mission[:,1])
     α_land_idx = argmax(skipmissing(collect(df_mission_filtered[mlw_row,:])))
     α_land = df_mission_filtered[mlw_row,α_land_idx]
     MLW = α_land * MTOW
 
-    # Get landing stal speed
+    # Get landing stall speed
     ρ_row = findfirst(==("ρ"),df_mission[:,1])
     ρ = df_mission_filtered[ρ_row,α_land_idx]
     CL_max_total = InputValidate.get_value(df_aircraft, "Wing CLmax", aircraft_idx) + InputValidate.get_value(df_aircraft, "Wing CLmax Landing Flaps", aircraft_idx)
@@ -210,6 +214,7 @@ function update_design(;WS_max, TW_max, df_aircraft::DataFrame, N_aircraft::Int,
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Cost Model",value=cost_model,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Operating Velocity",value=V_max,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Operating Mach Number",value=M_max,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Maximum Range",value=range_max,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="MLW",value=MLW,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Landing Stall Speed",value=V_s_land,N_config=N_aircraft,col=aircraft_idx)
 

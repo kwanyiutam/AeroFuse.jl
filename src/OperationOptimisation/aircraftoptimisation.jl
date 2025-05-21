@@ -206,6 +206,10 @@ function aircraft_design_flow(;opt_list::DataFrame,df_aircraft::DataFrame,N_airc
 
     # Estimate MTOW (and CG in the future)
     df_aircraft = WeightEst.weight_calculation(df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx)
+
+    # Calculate Cost
+    (total_cost, df_cost) = CostModel.cost_calc(df_cost_model = df_cost_model, df_aircraft = df_aircraft, aircraft_idx = aircraft_idx, df_mission = df_mission, N_stages = N_stages, df_payload = df_payload, payload_idx = payload_idx)
+    print(df_cost)
 end
 
 """
