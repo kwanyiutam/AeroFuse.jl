@@ -162,6 +162,7 @@ end
 function update_design(;WS_max, TW_max, df_aircraft::DataFrame, N_aircraft::Int, aircraft_idx::Int,df_mission::DataFrame,N_stages::Int)
     MTOW = InputValidate.get_value(df_aircraft,"MTOW",aircraft_idx)
     AR = InputValidate.get_value(df_aircraft,"Wing AR",aircraft_idx)
+
     g = uconvert(u"m/s^2", 1*u"ge") # Gravitational acceleration constant
 
     if MTOW > 150.0*1000*u"kg"
@@ -189,13 +190,28 @@ function update_design(;WS_max, TW_max, df_aircraft::DataFrame, N_aircraft::Int,
     c_sound = upreferred(sqrt(1.4 * P / rho))
     M_max = uconvert(u"m/s",V_max) / c_sound
 
+    # Calculate maximum landing weight
+    mlw_row = findfirst(==("Max_Mass_Ratio"),df_mission[:,1])
+    α_land_idx = argmax(skipmissing(collect(df_mission_filtered[mlw_row,:])))
+    α_land = df_mission_filtered[mlw_row,α_land_idx]
+    MLW = α_land * MTOW
+
+    # Get landing stal speed
+    ρ_row = findfirst(==("ρ"),df_mission[:,1])
+    ρ = df_mission_filtered[ρ_row,α_land_idx]
+    CL_max_total = InputValidate.get_value(df_aircraft, "Wing CLmax", aircraft_idx) + InputValidate.get_value(df_aircraft, "Wing CLmax Landing Flaps", aircraft_idx)
+    V_s_land = sqrt.((2 .* α_land .* WS_max) ./ (ρ .* CL_max_total))
+
     # Append to the aircraft data!
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="WS_max",value=WS_max,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Wing Area",value=Sref,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Wing Span",value=bref,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Tmax",value=Tmax,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Cost Model",value=cost_model,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Operating Velocity",value=V_max,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Operating Mach Number",value=M_max,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="MLW",value=MLW,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Landing Stall Speed",value=V_s_land,N_config=N_aircraft,col=aircraft_idx)
 
     return df_aircraft
 end
