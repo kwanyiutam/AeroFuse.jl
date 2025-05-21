@@ -607,7 +607,6 @@ function weight_calculation(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx
     print(InputValidate.get_value(df_aircraft,"MTOW",aircraft_idx))
     print("\n")
 
-
     # Update the weight values with new ones
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Empty Weight",value=W_total,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="MTOW",value=W_total,N_config=N_aircraft,col=aircraft_idx)

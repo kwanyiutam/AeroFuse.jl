@@ -206,12 +206,16 @@ function update_design(;WS_max, TW_max, df_aircraft::DataFrame, N_aircraft::Int,
     CL_max_total = InputValidate.get_value(df_aircraft, "Wing CLmax", aircraft_idx) + InputValidate.get_value(df_aircraft, "Wing CLmax Landing Flaps", aircraft_idx)
     V_s_land = sqrt.((2 .* α_land .* WS_max) ./ (ρ .* CL_max_total))
 
+    # Calculate block time
+    block_time = sum(df_mission[findfirst(==("Duration"),df_mission[:,1]),ncol(df_mission)-N_stages+1:ncol(df_mission)])
+
     # Append to the aircraft data!
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="WS_max",value=WS_max,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Wing Area",value=Sref,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Wing Span",value=bref,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Tmax",value=Tmax,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Cost Model",value=cost_model,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Block Time",value=block_time,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Operating Velocity",value=V_max,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Operating Mach Number",value=M_max,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Maximum Range",value=range_max,N_config=N_aircraft,col=aircraft_idx)

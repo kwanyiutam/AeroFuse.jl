@@ -37,7 +37,7 @@ function cost_variables(;variables::Vector{String}, units, df_aircraft::DataFram
         if var == "Fuel Weight"
             value = InputValidate.get_value(df_aircraft,"Fuel Weight",aircraft_idx)
         elseif var == "Cruise Time"
-            value = sum(df_mission[findfirst(==("Duration"),df_mission[:,1]),ncol(df_mission)-N_stages+1:ncol(df_mission)])
+            value = sum(df_mission[findfirst(==("Duration"),df_mission[:,1]),ncol(df_mission)-N_stages+1:ncol(df_mission)]) # Kept like this because inital sizing did not define block time
         elseif var == "Number of Cabin Crew"
             value = InputValidate.get_value(df_payload,"Cabin Crew",payload_idx)
         elseif var == "MTOW"
@@ -47,11 +47,11 @@ function cost_variables(;variables::Vector{String}, units, df_aircraft::DataFram
         elseif var == "Fleet Size"
             value = 1 # Assume fleet size of 1
         elseif var == "Utilisation"
-            tb = sum(df_mission[findfirst(==("Duration"),df_mission[:,1]),ncol(df_mission)-N_stages+1:ncol(df_mission)])
+            tb = InputValidate.get_value(df_aircraft,"Block Time",aircraft_idx)
             value = utilisation_calc(tb) / 365.25 # Utilisation per day, so divide by days
         elseif var == "AFD"
             # For AFD, assume same as duration of flight time, BUT later can define
-            value = sum(df_mission[findfirst(==("Duration"),df_mission[:,1]),ncol(df_mission)-N_stages+1:ncol(df_mission)])
+            value = InputValidate.get_value(df_aircraft,"Block Time",aircraft_idx)
         elseif var == "Aircraft Cost (in Million)"
             value = 0.0 # Define as 0 for now, should be replaced soon
         elseif var == "Age of Type of Aircraft"
@@ -236,8 +236,34 @@ function cost_calc(;df_cost_model::DataFrame, df_aircraft::DataFrame, aircraft_i
         if occursin(r"(?i)^Aircraft Cost",component)
             cost_idx = findfirst(==("Aircraft Cost (in Million)"),variables)
             values[cost_idx] = df_results[df_row_idx,"Cost (USD)"] / 10.0^6 # in million
-            print(values)
         end
+    end
+
+    # Special case for calculating depreciation costs
+    depr_idx = findall(value -> occursin(r"(?i)^Depreciation",value), df_results[:,"Category"])
+
+    if isempty(depr_idx)
+        total_cost = sum(collect(df_results[:,"Cost (USD)"]))
+    else
+        ac_cost_idx = findfirst(value -> occursin(r"(?i)^Aircraft Cost", value), df_results[:, "Cost_Component"])
+        eng_cost_idx = findfirst(value -> occursin(r"(?i)^Engine Cost", value), df_results[:, "Cost_Component"])
+
+        ac_cost = df_results[ac_cost_idx,"Cost (USD)"]
+        eng_cost = df_results[eng_cost_idx,"Cost (USD)"]
+        af_cost = ac_cost - eng_cost # Assume airframe cost = aircraft - engine
+
+        # Calculate the time and utilisation
+        time = InputValidate.get_value(df_aircraft,"Block Time",aircraft_idx)
+        time = uconvert(u"hr", time)
+        U = utilisation_calc(time)
+
+        depreciation = 0.9 * ustrip(time) * (ac_cost + 0.1*af_cost + 0.3*eng_cost) / (14 * ustrip(U))
+        push!(df_results,["Depreciation", "Depreciation", depreciation])
+
+        # Ignore aircraft and engine cost
+        total_calc_idx = setdiff(1:nrow(df_results), [ac_cost_idx, eng_cost_idx])
+
+        total_cost = sum(collect(df_results[total_calc_idx,"Cost (USD)"]))
     end
 
     total_cost = sum(collect(df_results[:,"Cost (USD)"]))
