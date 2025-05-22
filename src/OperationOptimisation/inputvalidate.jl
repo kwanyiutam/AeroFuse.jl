@@ -772,5 +772,30 @@ function update_df_with_design(;design_list::DataFrame,parameter::String,value,d
     return (df_aircraft,df_mission,df_payload)
 end
 
+"""
+    `get_design_value` - A function which obtains the design value
+
+    Returns the updated dataframes
+"""
+function get_design_values(design_list::DataFrame,parameter::String,df_aircraft::DataFrame,df_mission::DataFrame,df_payload::DataFrame)
+    # Find the row corresponding to where the design was saved
+    row_idx = findfirst(x -> occursin(Regex("(?i)"*parameter), x), design_list[:,"Design Parameter"])
+    location = design_list[row_idx, "Saved Location"]
+    row = design_list[row_idx, "Saved Row"]
+    col = design_list[row_idx, "Saved Column"]
+    
+    if location == "Aircraft"
+        value = df_aircraft[row,col]
+    elseif location == "Mission"
+        value = df_mission[row,col]
+    elseif location == "Payload"
+        value = df_payload[row,col]
+    else
+        throw(ErrorException("Invalid location, cannot find $location"))
+    end
+
+    return value
+end
+
 end
 

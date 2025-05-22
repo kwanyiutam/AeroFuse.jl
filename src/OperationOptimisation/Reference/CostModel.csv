@@ -1,6 +1,6 @@
 Data,Model,Category,Logic,Year,Constant,Fuel Weight,Cruise Time,Number of Cabin Crew,Fuel Tank Volume,Fleet Size,Utilisation,AFD,Aircraft Cost (in Million),Age of Type of Aircraft,Number of Seats,Average age,Number of Tires,Number of Engines,Thrust,MTOW,Fuselage Length,Fuselage Diameter,Mach Number,Range,Wing Area,Wing Span
 Units,Units,Units,,Units,,kg,hr,,L,,,hr,,yr,,yr,,,lbf,kg,m,m,,km,m^2,m
-Fuel,Basic;Full_A;Full_B;Full_C;Full_D,Fuel,SUM,2025,0,0.646,,,,,,,,,,,,,,,,,,,,
+Fuel,Basic;Full_A;Full_B;Full_C;Full_D;Min_Fuel,Fuel,SUM,2025,0,0.646,,,,,,,,,,,,,,,,,,,,
 Flight Crew,Basic;Full_A;Full_B;Full_C;Full_D,Flight Crew,FCREW,2010,0,,1,,,,,,,,,,,,,1,,,,,,
 Cabin Crew,Basic;Full_A;Full_B;Full_C;Full_D,Cabin Crew,PROD,2010,81,,1,1,,,,,,,,,,,,,,,,,,
 Line Maintenance,Full_A;Full_B;Full_C;Full_D,"Maintenance, Miscellaneous",SUM,2013,190.4,,,,,0.0269,-17.763,13.338,0.8728,,,0.1384,,,,,,,,,,

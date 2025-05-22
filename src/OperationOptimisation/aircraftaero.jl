@@ -363,10 +363,38 @@ function run_aero_analysis(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
         )
 
         # Find angle of attack which matches target CL
-        α0 = find_zero(2.0, Roots.Order0()) do α
-            sys = make_case(α, wing_mesh, HT_mesh, VT_mesh, refs)
-            CL_cruise - get_forces(sys, wing_mesh, HT_mesh, VT_mesh, fuse, eng_save, CD_upsweep).CL
+        α0 = try
+            find_zero(2.0, Roots.Order0()) do α
+                sys = make_case(α, wing_mesh, HT_mesh, VT_mesh, refs)
+                CL_cruise - get_forces(sys, wing_mesh, HT_mesh, VT_mesh, fuse, eng_save, CD_upsweep).CL
+            end
+        catch
+            Plots.plot(
+                aspect_ratio = 1,
+                camera = (30, 30),
+                zlim = span(wing) .* (-0.5, 0.5),
+                size = (800, 600)
+            )
+            Plots.plot!(wing_mesh, label = "Wing")
+            Plots.plot!(HT_mesh, label = "HT")
+            Plots.plot!(VT_mesh, label = "VT")
+            Plots.plot!(fuse, label = "Fuselage")
+
+            for i in 1:N_engines
+                Plots.plot!(eng_save[i], label = "Engine $i")
+            end
+
+            savefig("SamplePlane.png") 
+
+            @warn "Case Failed! This row will bre returning NaN..."
+            print(df_aircraft)
+            df_mission = InputValidate.df_update_or_append(df=df_mission,label="LD",value=NaN,N_config=N_stages,col=col)
+            df_mission = InputValidate.df_update_or_append(df=df_mission,label="CD",value=NaN,N_config=N_stages,col=col)
+            df_mission = InputValidate.df_update_or_append(df=df_mission,label="CD0_Estimate",value=NaN,N_config=N_stages,col=col)
+
+            continue
         end
+
 
         sys = make_case(α0, wing_mesh, HT_mesh, VT_mesh, refs)
         init = get_forces(sys, wing_mesh, HT_mesh, VT_mesh, fuse, eng_save, CD_upsweep)

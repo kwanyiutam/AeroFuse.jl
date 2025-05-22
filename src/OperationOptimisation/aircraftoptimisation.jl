@@ -194,7 +194,7 @@ end
 """
     `aircraft_design_flow` - A function which runs the design workflow
 """
-function aircraft_design_flow(;opt_list::DataFrame,df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,payload_idx::Int,df_cost_model::DataFrame)
+function aircraft_design_flow(;design_param::DataFrame,opt_list::DataFrame,df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,payload_idx::Int,df_cost_model::DataFrame,df_save::DataFrame,save_data::Bool=false)
     # Update fuselage information based on the number of passengers
     (df_aircraft, df_payload) = fuselage_sizing(df_aircraft = df_aircraft,N_aircraft = N_aircraft, aircraft_idx = aircraft_idx, df_payload=df_payload, N_payload=N_payload, payload_col=payload_idx)
 
@@ -204,18 +204,66 @@ function aircraft_design_flow(;opt_list::DataFrame,df_aircraft::DataFrame,N_airc
     # Given the wing, fuselage information, calcualate aerodynamic properties + generate mesh
     (df_aircraft, df_mission) = AircraftAero.run_aero_analysis(df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
 
+    # Save conceptual aircraft MTOW information, need to reverse it later
+    old_MTOW = InputValidate.get_value(df_aircraft,"MTOW",aircraft_idx)
+    old_W_e = InputValidate.get_value(df_aircraft,"Empty Weight",aircraft_idx)
+
     # Estimate MTOW (and CG in the future)
     df_aircraft = WeightEst.weight_calculation(df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx)
 
     # Calculate Cost
-    (total_cost, df_cost) = CostModel.cost_calc(df_cost_model = df_cost_model, df_aircraft = df_aircraft, aircraft_idx = aircraft_idx, df_mission = df_mission, N_stages = N_stages, df_payload = df_payload, payload_idx = payload_idx)
-    print(df_cost)
+    (total_cost, df_cost_breakdown) = CostModel.cost_calc(df_cost_model = df_cost_model, df_aircraft = df_aircraft, aircraft_idx = aircraft_idx, df_mission = df_mission, N_stages = N_stages, df_payload = df_payload, payload_idx = payload_idx)
+
+    if save_data == true
+        push!(df_save, fill(missing, ncol(df_save)))
+        row_idx = nrow(df_save)
+        col_names = DataFrames.names(df_save)
+        df_save[row_idx,1:2] = [aircraft_idx, payload_idx]
+    
+        # Add Design Data
+        for des_idx in 1:nrow(design_param)
+            des_name = design_param[des_idx,"Design Parameter"]
+            col_idx = findfirst(==(des_name),col_names)
+            df_save[row_idx,col_idx] = InputValidate.get_design_values(design_param,des_name,df_aircraft,df_mission,df_payload)
+        end
+
+        # Add Cost Data
+        df_save[row_idx,"Total Cost"] = total_cost
+        df_save[row_idx,"Cost Breakdown"] = df_cost_breakdown
+        idx_missing = findall(x -> x === missing, collect(df_save[row_idx,:]))
+
+        # Add Remaining Data
+        for i in idx_missing
+            get_data = col_names[i]
+            ac_data = findfirst(==(get_data),df_aircraft[:,1])
+            payload_data = findfirst(==(get_data),df_payload[:,1])
+            mission_data = findfirst(==(get_data),df_mission[:,1])
+
+            if !isnothing(ac_data)
+                value = df_aircraft[ac_data,aircraft_idx]
+            elseif !isnothing(payload_data)
+                value = df_payload[payload_data,payload_idx]
+            elseif !isnothing(mission_data)
+                value = df_mission[mission_data,ncol(df_mission)-N_stages+1:ncol(df_mission)]
+            else
+                throw(ErrorException("Cannot find the data $get_data on any of the datasets"))
+            end
+
+            df_save[row_idx,i] = value
+        end
+
+        # Reverse the MTOW to conceptual aircraft values, need it for common baseline
+        df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="MTOW",value=old_MTOW,N_config=N_aircraft,col=aircraft_idx)
+        df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Empty Weight",value=old_W_e,N_config=N_aircraft,col=aircraft_idx)
+    end
+
+    return (total_cost, df_cost_breakdown, df_aircraft, df_mission, df_payload, df_save)
 end
 
 """
     `aircraft_optimisation_start` - A function which starts the optimisation process for design (with perturbation first)
 """
-function aircraft_optimisation_start(;design_param::DataFrame,df_pert::DataFrame,df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,payload_idx::Int,df_cost::DataFrame)
+function aircraft_optimisation_start(;design_param::DataFrame,df_pert::DataFrame,df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,payload_idx::Int,df_cost::DataFrame,df_save::DataFrame)
     # List of perturbation / optimisation parameters
     pert_list = design_param[findall(==("Perturbations"),design_param[:,:Type]),:]
     opt_list = design_param[findall(==("Optimise"),design_param[:,:Type]),:]
@@ -230,7 +278,7 @@ function aircraft_optimisation_start(;design_param::DataFrame,df_pert::DataFrame
 
     if nrow(pert_list) == 0
         # Directly run the mission design flow
-        aircraft_design_flow(opt_list=opt_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx,df_cost_model=df_cost_model)
+        (_, _, _, _, _, df_save) = aircraft_design_flow(design_param=design_param,opt_list=opt_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx,df_cost_model=df_cost_model,df_save=df_save,save_data=true)
     else
         # For each specified design point
         for row in 1:nrow(df_pert)
@@ -245,9 +293,11 @@ function aircraft_optimisation_start(;design_param::DataFrame,df_pert::DataFrame
             end
 
             # Run the aircraft design evaluation flow
-            aircraft_design_flow(opt_list=opt_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx,df_cost_model=df_cost_model)
+            (_, _, _, _, _, df_save) = aircraft_design_flow(design_param=design_param,opt_list=opt_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx,df_cost_model=df_cost_model,df_save=df_save,save_data=true)
         end
     end
+
+    return df_save
 end
 
 end

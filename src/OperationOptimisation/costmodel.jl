@@ -266,8 +266,6 @@ function cost_calc(;df_cost_model::DataFrame, df_aircraft::DataFrame, aircraft_i
         total_cost = sum(collect(df_results[total_calc_idx,"Cost (USD)"]))
     end
 
-    total_cost = sum(collect(df_results[:,"Cost (USD)"]))
-
     return (total_cost, df_results)
 end
 

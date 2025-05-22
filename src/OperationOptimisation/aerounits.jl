@@ -10,11 +10,6 @@ using Unitful
 @unit gallon "gallon" Gallon (0.0037854118) * u"m^3" false
 
 function convert_to_unit(unit)
-    #try
-    #    unit = uparse(unit)
-    #catch
-    #    unit = uparse(unit, unit_context = AeroUnits)
-    #end
     # Special case for degrees
     if unit == "degrees"
         unit = "°"

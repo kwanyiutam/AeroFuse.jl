@@ -228,7 +228,7 @@ end
 """
     `mission_design_flow` - A function which runs the design workflow
 """
-function mission_design_flow(;design_param::DataFrame,velocity_list::DataFrame,df_pert::DataFrame,df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,df_cost::DataFrame)
+function mission_design_flow(;design_param::DataFrame,velocity_list::DataFrame,df_pert::DataFrame,df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,df_cost::DataFrame,df_save::DataFrame)
     for payload_idx in (ncol(df_payload)-N_payload+1):ncol(df_payload)
         (df_aircraft,df_mission,df_payload) = InitialSizing.update_init_design(df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx) 
             
@@ -248,8 +248,10 @@ function mission_design_flow(;design_param::DataFrame,velocity_list::DataFrame,d
         df_aircraft = update_design(WS_max = WS_max, TW_max = TW_max, df_aircraft = df_aircraft, N_aircraft = N_aircraft, aircraft_idx = aircraft_idx,df_mission=df_mission,N_stages=N_stages)
 
         # Run the aircraft optimisation / perturbations
-        AircraftOptimisation.aircraft_optimisation_start(design_param = design_param,df_pert = df_pert,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx,df_cost=df_cost)
+        df_save = AircraftOptimisation.aircraft_optimisation_start(design_param = design_param,df_pert = df_pert,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx,df_cost=df_cost,df_save=df_save)
     end
+    
+    return df_save
 end
 
 
@@ -257,7 +259,7 @@ end
     `design_start` - A function which runs the design workflow
 
 """
-function design_start(;design_param::DataFrame,df_design::DataFrame,df_pert::DataFrame, df_aircraft::DataFrame,N_aircraft::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,df_cost::DataFrame)
+function design_start(;design_param::DataFrame,df_design::DataFrame,df_pert::DataFrame, df_aircraft::DataFrame,N_aircraft::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,df_cost::DataFrame,data_save::Vector{String})
     # Get the list of design-specific parameters
     design_list = design_param[findall(==("Design"),design_param[:,:Type]),:]
 
@@ -272,11 +274,17 @@ function design_start(;design_param::DataFrame,df_design::DataFrame,df_pert::Dat
     # Define key variables needed for initial sizing
     df_aircraft = InitialSizing.define_aircraft_properties(df_aircraft=df_aircraft,N_aircraft=N_aircraft)
 
+    # Default entries
+    data_save_def = ["Aircraft Index", "Payload Index"]
+    data_save_def = vcat(data_save_def,design_param[:,"Design Parameter"],"Total Cost","Cost Breakdown","Wing Mesh","HT Mesh","VT Mesh","Fuselage Shape","Engine Shape")
+    data_save_def = vcat(data_save_def, data_save)
+    df_save = DataFrame(NamedTuple{Tuple(Symbol.(data_save_def))}(Tuple(Any[] for _ in data_save_def)))
+
     # For each aircraft
     for aircraft_idx in (ncol(df_aircraft)-N_aircraft+1):ncol(df_aircraft)
         if nrow(df_design) == 0
             # Directly run the mission design flow
-            mission_design_flow(design_param=design_param,df_pert=df_pert,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,df_cost=df_cost)
+            df_save = mission_design_flow(design_param=design_param,df_pert=df_pert,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,df_cost=df_cost,df_save=df_save)
         else
             # For each specified design point
             for row in 1:nrow(df_design)
@@ -291,11 +299,12 @@ function design_start(;design_param::DataFrame,df_design::DataFrame,df_pert::Dat
                 end
 
                 # Run the mission design flow
-                mission_design_flow(design_param=design_param,velocity_list=velocity_list,df_pert=df_pert,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,df_cost=df_cost)
+                df_save = mission_design_flow(design_param=design_param,velocity_list=velocity_list,df_pert=df_pert,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,df_cost=df_cost,df_save=df_save)
             end
         end
     end
-end
 
+    return df_save
+end
 
 end
