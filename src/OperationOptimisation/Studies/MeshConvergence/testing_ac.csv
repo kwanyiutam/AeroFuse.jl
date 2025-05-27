@@ -1,0 +1,53 @@
+Assumptions,Units,Baseline Jet
+PlaneType,,Jet transport
+Regulations,,FAR25 (Commercial)
+Number of Engines,,2
+Engine Type,,Jet
+Engine Mounting Position,,Wing
+Engine Position from Fuselage Normalised by Engine Diameter,,2
+Engine Bypass Ratio,,10
+Engine Propeller Type,,
+Engine Propeller Efficiency,,
+Engine Propeller Disc Load,hp/ft^2,
+Swet/Sref,,5
+Wing AR,,10
+Oswald Efficiency,,0.8
+Wing Oswald Efficiency Takeoff Penalty,,-0.05
+Wing Oswald Efficiency Landing Gear Penalty,,-0.05
+Wing Oswald Efficiency Landing Penalty,,-0.1
+Wing CLmax,,1.5
+Wing CLmax Takeoff Flaps,,0.2
+Wing CLmax Landing Flaps,,0.5
+Wing CD0 Takeoff Penalty,,0.02
+Wing CD0 Landing Gear Penalty,,0.02
+Wing CD0 Landing Penalty,,0.07
+Wing Airfoil,,NACA651412
+Wing Dihedral,degrees,2
+Wing Quarterchord Sweep,degrees,0
+Wing Taper Ratio,,0.3
+Wing Setting Angle,degrees,3
+Wing Twist Angle,degrees,0
+Wing LE Location (Relative to Fuselage Length),,0.45
+"Wing Root Chord Location (Relative to Fuselage Centerline, Normalised by Radius)",,-0.3
+HT AR,,5
+HT Airfoil,,NACA0012
+HT Dihedral,degrees,0
+HT Quarterchord Sweep,degrees,30
+HT Taper Ratio,,0.5
+HT Setting Angle,degrees,0
+HT Twist Angle,degrees,0
+HT LE Location (Relative to Fuselage Length),,0.9
+HT Root Chord Location (Relative to Span of VT),,0
+VT AR,,1.2
+VT Airfoil,,NACA0012
+VT Dihedral,degrees,0
+VT Quarterchord Sweep,degrees,30
+VT Taper Ratio,,0.6
+VT Setting Angle,degrees,0
+VT Twist Angle,degrees,0
+VT LE Location (Relative to Fuselage Length),,0.9
+Nose Fineness Ratio,,1.5
+Afterbody Fineness Ratio,,3
+Afterbody Upsweep Angle,degrees,5
+Spanwise Discretisation,,PERT;Spanwise Discretisation;1;30
+Chordwise Discretisation,,PERT;Chordwise Discretisation;1;20

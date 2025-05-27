@@ -13,7 +13,7 @@ Unitful.register(AeroUnits)
 # Include the ParseData module
 include("parsedata.jl")
 
-function get_value(df::DataFrame,label::String,col=nothing,all_col::Bool=false)
+function get_value(df::DataFrame,label,col=nothing,all_col::Bool=false)
     if all_col == true
         value = df[findfirst(==(label),df[:,1]),:]
     else

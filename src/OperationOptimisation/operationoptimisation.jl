@@ -122,7 +122,6 @@ function sampling_points(;N_sample::Int, design_param::DataFrame, design_type::S
     return df_samples
 end
 
-
 """
     `WS_init` - A function which initialise the WS dataframe to store key information
 

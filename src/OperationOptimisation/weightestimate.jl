@@ -512,7 +512,13 @@ function fuel_calculation(df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::I
         end
 
         α *= new_fraction
+
         df_mission = InputValidate.df_update_or_append(df=df_mission,label="α",value=α,N_config=N_stages,col=col)
+    end
+
+    # Set as NaN if the L/D did not return correctly
+    if ismissing(α)
+        α = NaN
     end
 
     new_fuel_weight = MTOW*(1.0 - α)*trapped_fuel
@@ -589,29 +595,19 @@ function weight_calculation(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx
     W_hg = handling_gear_weight(df_aircraft, aircraft_idx)
 
     W_total = W_wing + W_HT + W_VT + W_fus + W_eng + W_mlg + W_nlg + W_ncl + W_ec + W_estart + W_fs + W_fc + W_inst + W_hyd + W_av + W_furn + W_airc + W_ai + W_hg
-    print("Current: ")
-    print(W_total)
-    print("\nPredicted: ")
-    print(InputValidate.get_value(df_aircraft,"Empty Weight",aircraft_idx))
-    print("\n")
 
     # Obtain fuel and paylaod weight to calculate the MTOW
     W_fuel = InputValidate.get_value(df_aircraft,"Fuel Weight",aircraft_idx)
+
     W_pl = InputValidate.get_value(df_payload,"Payload Weight",payload_idx)
 
     MTOW = W_total + W_fuel + W_pl
-
-    print("Current MTOW: ")
-    print(MTOW)
-    print("\nPredicted: ")
-    print(InputValidate.get_value(df_aircraft,"MTOW",aircraft_idx))
-    print("\n")
 
     # Update the weight values with new ones
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Empty Weight",value=W_total,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="MTOW",value=MTOW,N_config=N_aircraft,col=aircraft_idx)
 
-    return df_aircraft
+    return (df_aircraft, df_mission)
 end
 
 end

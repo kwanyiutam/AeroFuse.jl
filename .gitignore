@@ -356,3 +356,14 @@ examples/geometry/fuselage.jl
 examples/aerodynamics/2d_panel_methods/dubsrc_airfoil.jl
 examples/aerodynamics/2d_panel_methods/dubsrc_airfoil.jl
 examples/geometry/fuselage.jl
+src/OperationOptimisation/Studies/MeshConvergence/MeshConvergence.png
+examples/aerodynamics/2d_panel_methods/dubsrc_airfoil.jl
+examples/geometry/fuselage.jl
+src/OperationOptimisation/~$TestingOutput_a320.xlsx
+src/OperationOptimisation/~$TestingOutput.xlsx
+src/OperationOptimisation/OptimalPlane_a320.png
+src/OperationOptimisation/OptimalPlane.png
+src/OperationOptimisation/SamplePlane.png
+src/OperationOptimisation/testing_perturb copy 2.csv
+src/OperationOptimisation/testing_perturb copy.csv
+src/OperationOptimisation/Studies/MeshConvergence/ConvergenceStudy.xlsx

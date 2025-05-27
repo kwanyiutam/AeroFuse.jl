@@ -63,8 +63,11 @@ function fuselage_sizing(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::I
     N_seat_2 = floor((seat_abreast-N_seat_3*3) / 2)
     N_seat_1 = seat_abreast-N_seat_3*3-N_seat_2*2
 
+    # Number of aisles
+    N_aisle = ceil(seat_abreast / 6)
+
     seat_width_total = seat_width_1*N_seat_1 + seat_width_2*N_seat_2 + seat_width_3*N_seat_3
-    approx_width = max((seat_width_total+aisle_width),cargo_width) + 2*wall_thick + extra_width
+    approx_width = max((seat_width_total+aisle_width*N_aisle),cargo_width) + 2*wall_thick + extra_width
 
     # Effective diameter
     D_eff = sqrt(approx_width*approx_height)
@@ -78,13 +81,13 @@ function fuselage_sizing(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::I
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Diameter",value=D_eff,N_config=N_aircraft,col=aircraft_idx)
 
     # Length calculations
-    cross_aisle_length = uconvert(u"m", df_payload[findfirst(==("Cross Aisle per 20"),df_payload[:,1]),payload_col])
-    lavatories_length = uconvert(u"m", df_payload[findfirst(==("Lavatories per 50"),df_payload[:,1]),payload_col])
+    cross_aisle_length = uconvert(u"m", df_payload[findfirst(==("Cross Aisle per 20 Rows"),df_payload[:,1]),payload_col])
+    lavatories_length = uconvert(u"m", df_payload[findfirst(==("Lavatories per 50 Pax"),df_payload[:,1]),payload_col])
     galley_vol = uconvert(u"m^3", df_payload[findfirst(==("Galley per pax"),df_payload[:,1]),payload_col])
 
     # Get the actual length increase
-    cross_aisle_length = cross_aisle_length * ceil(N_passenger / 20)
-    lavatories_total_length = lavatories_length * ceil(N_passenger / 50)
+    cross_aisle_length = cross_aisle_length * ceil(N_rows / 20) # Every 20 rows
+    lavatories_total_length = lavatories_length * ceil(N_passenger / 50) # Every 50 Rows
 
     # Lavatories are square, and can be packed tighter (right now assume all lengthwise)
     N_lavatory_rows = ceil(D_eff / lavatories_total_length)
@@ -96,7 +99,7 @@ function fuselage_sizing(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::I
     # Get cabin length
     extra_length = uconvert(u"m", df_payload[findfirst(==("Extra Length"),df_payload[:,1]),payload_col])
     cabin_length = seat_length + cross_aisle_length + lavatory_actual_length + galley_length + extra_length
-    
+
     # Check how much cargo space left is needed
     V_cargo_remain = V_storage - (cargo_height*cargo_width*cabin_length)
 
@@ -167,9 +170,11 @@ function powerplant_sizing(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
 
         if engine_type == "Turboprop"
             if Pmax < 300
-                @warn "Power is below the applicable range, the data is now being extrapolated. Proceed with caution"
+                @warn "Power is below the applicable range, the data is now capped at 300 W. Proceed with caution"
+                Pmax = 300.0
             elseif Pmax > 3728
-                @warn "Power is above the applicable range, the data is now being extrapolated. Proceed with caution"
+                @warn "Power is above the applicable range, the data is now capped at 3728 W. Proceed with caution"
+                Pmax = 3728.0
             end
 
             weight = 0.96*Pmax^0.803*u"kg"
@@ -195,6 +200,11 @@ end
     `aircraft_design_flow` - A function which runs the design workflow
 """
 function aircraft_design_flow(;design_param::DataFrame,opt_list::DataFrame,df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,payload_idx::Int,df_cost_model::DataFrame,df_save::DataFrame,save_data::Bool=false)
+    # Deepcopy to ensure that the dataframe does not affect downstream designs
+    df_aircraft = deepcopy(df_aircraft)
+    df_mission = deepcopy(df_mission)
+    df_payload = deepcopy(df_payload)
+
     # Update fuselage information based on the number of passengers
     (df_aircraft, df_payload) = fuselage_sizing(df_aircraft = df_aircraft,N_aircraft = N_aircraft, aircraft_idx = aircraft_idx, df_payload=df_payload, N_payload=N_payload, payload_col=payload_idx)
 
@@ -204,12 +214,8 @@ function aircraft_design_flow(;design_param::DataFrame,opt_list::DataFrame,df_ai
     # Given the wing, fuselage information, calcualate aerodynamic properties + generate mesh
     (df_aircraft, df_mission) = AircraftAero.run_aero_analysis(df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
 
-    # Save conceptual aircraft MTOW information, need to reverse it later
-    old_MTOW = InputValidate.get_value(df_aircraft,"MTOW",aircraft_idx)
-    old_W_e = InputValidate.get_value(df_aircraft,"Empty Weight",aircraft_idx)
-
     # Estimate MTOW (and CG in the future)
-    df_aircraft = WeightEst.weight_calculation(df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx)
+    (df_aircraft, df_mission) = WeightEst.weight_calculation(df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx)
 
     # Calculate Cost
     (total_cost, df_cost_breakdown) = CostModel.cost_calc(df_cost_model = df_cost_model, df_aircraft = df_aircraft, aircraft_idx = aircraft_idx, df_mission = df_mission, N_stages = N_stages, df_payload = df_payload, payload_idx = payload_idx)
@@ -251,13 +257,9 @@ function aircraft_design_flow(;design_param::DataFrame,opt_list::DataFrame,df_ai
 
             df_save[row_idx,i] = value
         end
-
-        # Reverse the MTOW to conceptual aircraft values, need it for common baseline
-        df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="MTOW",value=old_MTOW,N_config=N_aircraft,col=aircraft_idx)
-        df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Empty Weight",value=old_W_e,N_config=N_aircraft,col=aircraft_idx)
     end
 
-    return (total_cost, df_cost_breakdown, df_aircraft, df_mission, df_payload, df_save)
+    return (total_cost, df_cost_breakdown, df_save)
 end
 
 """
@@ -278,7 +280,7 @@ function aircraft_optimisation_start(;design_param::DataFrame,df_pert::DataFrame
 
     if nrow(pert_list) == 0
         # Directly run the mission design flow
-        (_, _, _, _, _, df_save) = aircraft_design_flow(design_param=design_param,opt_list=opt_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx,df_cost_model=df_cost_model,df_save=df_save,save_data=true)
+        (_, _, df_save) = aircraft_design_flow(design_param=design_param,opt_list=opt_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx,df_cost_model=df_cost_model,df_save=df_save,save_data=true)
     else
         # For each specified design point
         for row in 1:nrow(df_pert)
@@ -293,7 +295,7 @@ function aircraft_optimisation_start(;design_param::DataFrame,df_pert::DataFrame
             end
 
             # Run the aircraft design evaluation flow
-            (_, _, _, _, _, df_save) = aircraft_design_flow(design_param=design_param,opt_list=opt_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx,df_cost_model=df_cost_model,df_save=df_save,save_data=true)
+            (_, _, df_save) = aircraft_design_flow(design_param=design_param,opt_list=opt_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx,df_cost_model=df_cost_model,df_save=df_save,save_data=true)
         end
     end
 

@@ -20,7 +20,6 @@ function chord_pos(y_halfspan,λ,c_root)
     return (λ-1)*c_root*y_halfspan+c_root
 end
 
-
 #### Additional functions for engine (nacelles)
 parasitic_drag_coefficient_eng(eng :: HyperEllipseFuselage, refs :: References, x_tr :: Real, ts = 0:0.01:1) = wetted_area_drag_coefficient(eng, x_tr, refs.density, refs.speed, mach_number(refs), refs.viscosity, refs.area, ts)
 
@@ -69,24 +68,39 @@ end
     return the forces
 """
 function get_forces(system, wing, HT, VT, fuse, eng_save, CD_upsweep)
+    print()
     # Evaluate aerodynamic coefficients
     CDi, CY, CL, Cl, Cm, Cn = nearfield(system)
-    # CDi, _, _ = farfield(system)
 
-    # Calculate equivalent flat-plate skin-friction drag
-    # CDv = parasitic_drag_coefficient(wing_mesh, 1.0, system.reference)
+    if isnan(CDi)
+        @warn "nearfield results from VLM system returned NaN... Using the farfield results instead"
+        CDi, _, CL = farfield(system)
+    
+        # Use wetted area instead of the surface velocities
+        # Wing viscous drag
+        CDv = parasitic_drag_coefficient(wing, system.reference, 0.1)
 
-    # Wing viscous drag
-    CVs = norm.(surface_velocities(system)).wing
-    CDv = parasitic_drag_coefficient(wing, system.reference, 0.1, CVs)
+        # HT viscous drag
+        CVs_HT = norm.(surface_velocities(system)).htail
+        CDv_HT = parasitic_drag_coefficient(HT, system.reference, 0.1)
 
-    # HT viscous drag
-    CVs_HT = norm.(surface_velocities(system)).htail
-    CDv_HT = parasitic_drag_coefficient(HT, system.reference, 0.1, CVs_HT)
+        # VT viscous drag
+        CVs_VT = norm.(surface_velocities(system)).vtail
+        CDv_VT = parasitic_drag_coefficient(VT, system.reference, 0.1)
+    else
+        # Wing viscous drag
+        CVs = norm.(surface_velocities(system)).wing
+        CDv = parasitic_drag_coefficient(wing, system.reference, 0.1, CVs)
 
-    # VT viscous drag
-    CVs_VT = norm.(surface_velocities(system)).vtail
-    CDv_VT = parasitic_drag_coefficient(VT, system.reference, 0.1, CVs_VT)
+        # HT viscous drag
+        CVs_HT = norm.(surface_velocities(system)).htail
+        CDv_HT = parasitic_drag_coefficient(HT, system.reference, 0.1, CVs_HT)
+
+        # VT viscous drag
+        CVs_VT = norm.(surface_velocities(system)).vtail
+        CDv_VT = parasitic_drag_coefficient(VT, system.reference, 0.1, CVs_VT)
+    end
+
 
     # Fuselage viscous drag
     CDv_F = parasitic_drag_coefficient(fuse, system.reference, 0.05)
@@ -190,6 +204,25 @@ function initiate_wing_mesh(df_aircraft,aircraft_idx,wing_type,n_span,n_chord)
     return (wing, wing_mesh)
 end
 
+function get_tail_arm(arm, tail_x_pos, wing_mac_loc, df_aircraft, N_aircraft, aircraft_idx, n_span, n_chord, Sw, ref, Vbar, tail_AR, tail_type = "HT", tail_z_pos = 0.0*u"m")
+    S_tail = Vbar * Sw*u"m^2" * ref / arm
+    b_tail = sqrt(tail_AR * S_tail)
+
+    # Save data into dataframe
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="$tail_type Area",value=S_tail,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="$tail_type Span",value=b_tail,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="$tail_type Position",value=(tail_x_pos,0.0*u"m",tail_z_pos),N_config=N_aircraft,col=aircraft_idx)
+
+    # HT and VT calculation
+    (_, tail_mesh) = initiate_wing_mesh(df_aircraft,aircraft_idx,tail_type,n_span,n_chord)
+
+    # Actual Tail Arm
+    tail_mac_loc = mean_aerodynamic_center(tail_mesh)
+    tail_arm = (tail_mac_loc[1] - wing_mac_loc[1])*u"m"
+
+    return (tail_arm, tail_mesh)
+end
+
 """
     `run_aero_analysis` - A function which runs the aerodynamics analysis for OperationOptimisation
 
@@ -199,13 +232,16 @@ function run_aero_analysis(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
     # Key variables
     MTOW = uconvert(u"kg", InputValidate.get_value(df_aircraft,"MTOW",aircraft_idx))
     g = uconvert(u"m/s^2", 1*u"ge") # Gravitational acceleration constant
-    n_span = 20 # Number of spanwise discretisation
-    n_chord = 8 # Number of chordwise discretisation
+    n_span = InputValidate.get_value(df_aircraft,"Spanwise Discretisation",aircraft_idx) # Number of spanwise discretisation
+    n_chord = InputValidate.get_value(df_aircraft,"Chordwise Discretisation",aircraft_idx) # Number of chordwise discretisation
+
+    print("Number of Span: $n_span")
+    print("Number of Chord: $n_chord")
 
     # Obtain wing position
     fuselage_length = uconvert(u"m", InputValidate.get_value(df_aircraft,"Fuselage Length",aircraft_idx))
     diameter = uconvert(u"m", InputValidate.get_value(df_aircraft,"Diameter",aircraft_idx))
-    wing_x_pos = InputValidate.get_value(df_aircraft,"Wing MAC Location (Relative to Fuselage Length)",aircraft_idx) * fuselage_length
+    wing_x_pos = InputValidate.get_value(df_aircraft,"Wing LE Location (Relative to Fuselage Length)",aircraft_idx) * fuselage_length
     wing_z_pos = InputValidate.get_value(df_aircraft,"Wing Root Chord Location (Relative to Fuselage Centerline, Normalised by Radius)",aircraft_idx) * diameter / 2
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Wing Position",value=(wing_x_pos,0.0*u"m",wing_z_pos),N_config=N_aircraft,col=aircraft_idx)
 
@@ -221,40 +257,41 @@ function run_aero_analysis(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
     VT_Vbar = InputValidate.get_value(df_aircraft,"VV",aircraft_idx)
 
     # Get the dimensions
-    HT_x_pos = InputValidate.get_value(df_aircraft,"HT MAC Location (Relative to Fuselage Length)",aircraft_idx) * fuselage_length
+    HT_x_pos = InputValidate.get_value(df_aircraft,"HT LE Location (Relative to Fuselage Length)",aircraft_idx) * fuselage_length
     HT_AR = InputValidate.get_value(df_aircraft,"HT AR",aircraft_idx)
-    VT_x_pos = InputValidate.get_value(df_aircraft,"VT MAC Location (Relative to Fuselage Length)",aircraft_idx) * fuselage_length
+    VT_x_pos = InputValidate.get_value(df_aircraft,"VT LE Location (Relative to Fuselage Length)",aircraft_idx) * fuselage_length
     VT_AR = InputValidate.get_value(df_aircraft,"VT AR",aircraft_idx)
 
     # Calculate HT and VT properties
-    HT_arm = (HT_x_pos-wing_x_pos)
-    S_HT = HT_Vbar * Sw*u"m^2" * c_mean / HT_arm
-    b_HT = sqrt(HT_AR * S_HT)
-    VT_arm = (VT_x_pos-wing_x_pos)
-    S_VT = VT_Vbar * Sw*u"m^2" * bref / VT_arm
-    b_VT = sqrt(VT_AR * S_VT)
-    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="HT Tail Arm",value=HT_arm,N_config=N_aircraft,col=aircraft_idx)
-    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="HT Area",value=S_HT,N_config=N_aircraft,col=aircraft_idx)
-    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="HT Span",value=b_HT,N_config=N_aircraft,col=aircraft_idx)
-    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="VT Tail Arm",value=VT_arm,N_config=N_aircraft,col=aircraft_idx)
-    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="VT Area",value=S_VT,N_config=N_aircraft,col=aircraft_idx)
-    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="VT Span",value=b_VT,N_config=N_aircraft,col=aircraft_idx)
+    HT_arm_est = (HT_x_pos-wing_x_pos)
+    VT_arm_est = (VT_x_pos-wing_x_pos)
+    wing_mac_loc = mean_aerodynamic_center(wing_mesh)
 
+    # Iterate to find the correct wing size
+    HT_arm_final = find_zero(HT_arm_est, Roots.Order0()) do HT_arm
+        HT_arm - get_tail_arm(HT_arm, HT_x_pos, wing_mac_loc, df_aircraft, N_aircraft, aircraft_idx, n_span, n_chord, Sw, c_mean, HT_Vbar, HT_AR, "HT")[1]
+    end
+
+    VT_arm_final = find_zero(VT_arm_est, Roots.Order0()) do VT_arm
+        VT_arm - get_tail_arm(VT_arm, VT_x_pos, wing_mac_loc, df_aircraft, N_aircraft, aircraft_idx, n_span, n_chord, Sw, bref, VT_Vbar, VT_AR, "VT")[1]
+    end
+
+    HTArm = HT_arm_final[1]
+    VTArm = VT_arm_final[1]
+
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="HT Tail Arm",value=HT_arm_final[1],N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="VT Tail Arm",value=VT_arm_final[1],N_config=N_aircraft,col=aircraft_idx)
+    
     # Calcualte vertical position (based on the assumption that the tail follows the afterbody upsweep)
-    HT_z_pos = InputValidate.get_value(df_aircraft,"HT Root Chord Location (Relative to Span of VT)",aircraft_idx) * b_VT
+    HT_z_pos = InputValidate.get_value(df_aircraft,"HT Root Chord Location (Relative to Span of VT)",aircraft_idx) * InputValidate.get_value(df_aircraft,"VT Span",aircraft_idx)
     tail_angle = InputValidate.get_value(df_aircraft,"Afterbody Upsweep Angle",aircraft_idx)
     nose_x_end = InputValidate.get_value(df_aircraft,"Nose Length",aircraft_idx)
     tail_x_start = nose_x_end + InputValidate.get_value(df_aircraft,"Cabin Length",aircraft_idx)
-    VT_z_pos = (VT_x_pos-tail_x_start)*tand(tail_angle) - (diameter / 2)
+    VT_z_pos = (VT_x_pos-tail_x_start)*tand(tail_angle) + (diameter / 2)
     HT_z_pos = HT_z_pos + VT_z_pos
 
-    # Save data into dataframe
-    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="HT Position",value=(HT_x_pos,0.0*u"m",HT_z_pos),N_config=N_aircraft,col=aircraft_idx)
-    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="VT Position",value=(VT_x_pos,0.0*u"m",VT_z_pos),N_config=N_aircraft,col=aircraft_idx)
-
-    # HT and VT calculation
-    (HT, HT_mesh) = initiate_wing_mesh(df_aircraft,aircraft_idx,"HT",n_span,n_chord)
-    (VT, VT_mesh) = initiate_wing_mesh(df_aircraft,aircraft_idx,"VT",n_span,n_chord)
+    (_ , HT_mesh) = get_tail_arm(HTArm, HT_x_pos, wing_mac_loc, df_aircraft, N_aircraft, aircraft_idx, n_span, n_chord, Sw, c_mean, HT_Vbar, HT_AR, "HT", HT_z_pos)
+    (_ , VT_mesh) = get_tail_arm(VTArm, VT_x_pos, wing_mac_loc, df_aircraft, N_aircraft, aircraft_idx, n_span, n_chord, Sw, bref, VT_Vbar, VT_AR, "VT", VT_z_pos)
 
     # Initiate Fuselage
     nose_end = nose_x_end / fuselage_length
@@ -264,7 +301,7 @@ function run_aero_analysis(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
         length = ustrip(fuselage_length),
         x_a = ustrip(nose_end),
         x_b = ustrip(rear_start),
-        d_rear = ustrip(VT_z_pos),
+        d_rear = ustrip((fuselage_length-tail_x_start)*tand(tail_angle)),
         c_nose = 1.5,
         c_rear = 1.5,
     )
@@ -316,32 +353,12 @@ function run_aero_analysis(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
         push!(eng_save, eng)
     end
 
-    #gr()
-
-    ## Coordinates
-    #Plots.plot(
-    #    aspect_ratio = 1,
-    #    camera = (30, 30),
-    #    zlim = span(wing) .* (-0.5, 0.5),
-    #    size = (800, 600)
-    #)
-    #Plots.plot!(wing_mesh, label = "Wing")
-    #Plots.plot!(HT_mesh, label = "HT")
-    #Plots.plot!(VT_mesh, label = "VT")
-    #Plots.plot!(fuse, label = "Fuselage")
-
-    #for i in 1:N_engines
-    #    Plots.plot!(eng_save[i], label = "Engine $i")
-    #end
-
-    #savefig("SamplePlane.png") 
-
     # Add upsweep related drag
     CD_upsweep = ustrip(3.83*(pi*diameter^2/(4*Sw))*deg2rad(tail_angle)^2.5)
 
     # Get all conditions for cruise/loiter
     row_idx = findfirst(==("Stage"),df_mission[:,1])
-    cruise_condition = findall(==("Cruise"),skipmissing(collect(df_mission[row_idx, :])))
+    cruise_condition = sort(findall(==("Cruise"),skipmissing(collect(df_mission[row_idx, :]))))
     loiter_condition = findall(==("Loiter"),skipmissing(collect(df_mission[row_idx, :])))
     cruiseloiter_condition = vcat(cruise_condition,loiter_condition)
 
@@ -364,11 +381,13 @@ function run_aero_analysis(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
 
         # Find angle of attack which matches target CL
         α0 = try
-            find_zero(2.0, Roots.Order0()) do α
+            find_zero((-15,15)) do α
                 sys = make_case(α, wing_mesh, HT_mesh, VT_mesh, refs)
                 CL_cruise - get_forces(sys, wing_mesh, HT_mesh, VT_mesh, fuse, eng_save, CD_upsweep).CL
             end
-        catch
+        catch e
+            @error "ERROR: " exception=(e, catch_backtrace())
+
             Plots.plot(
                 aspect_ratio = 1,
                 camera = (30, 30),
@@ -387,18 +406,36 @@ function run_aero_analysis(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
             savefig("SamplePlane.png") 
 
             @warn "Case Failed! This row will bre returning NaN..."
-            print(df_aircraft)
+
+            if col == cruise_condition[1]
+                df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CL_cruise",value=NaN,N_config=N_aircraft,col=aircraft_idx)
+                df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CDv_cruise",value=NaN,N_config=N_aircraft,col=aircraft_idx)
+                df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CDi_cruise",value=NaN,N_config=N_aircraft,col=aircraft_idx)
+                df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="LD_cruise",value=NaN,N_config=N_aircraft,col=aircraft_idx)
+            end
+            df_mission = InputValidate.df_update_or_append(df=df_mission,label="CL",value=NaN,N_config=N_stages,col=col)
+            df_mission = InputValidate.df_update_or_append(df=df_mission,label="CDv",value=NaN,N_config=N_stages,col=col)
+            df_mission = InputValidate.df_update_or_append(df=df_mission,label="CDi",value=NaN,N_config=N_stages,col=col)
             df_mission = InputValidate.df_update_or_append(df=df_mission,label="LD",value=NaN,N_config=N_stages,col=col)
             df_mission = InputValidate.df_update_or_append(df=df_mission,label="CD",value=NaN,N_config=N_stages,col=col)
             df_mission = InputValidate.df_update_or_append(df=df_mission,label="CD0_Estimate",value=NaN,N_config=N_stages,col=col)
 
-            continue
+            break
         end
-
 
         sys = make_case(α0, wing_mesh, HT_mesh, VT_mesh, refs)
         init = get_forces(sys, wing_mesh, HT_mesh, VT_mesh, fuse, eng_save, CD_upsweep)
 
+        if col == cruise_condition[1]
+            df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CL_cruise",value=init.CL,N_config=N_aircraft,col=aircraft_idx)
+            df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CDv_cruise",value=init.CDv,N_config=N_aircraft,col=aircraft_idx)
+            df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CDi_cruise",value=init.CDi,N_config=N_aircraft,col=aircraft_idx)
+            df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="LD_cruise",value=init.L_D,N_config=N_aircraft,col=aircraft_idx)
+        end
+
+        df_mission = InputValidate.df_update_or_append(df=df_mission,label="CL",value=init.CL,N_config=N_stages,col=col)
+        df_mission = InputValidate.df_update_or_append(df=df_mission,label="CDv",value=init.CDv,N_config=N_stages,col=col)
+        df_mission = InputValidate.df_update_or_append(df=df_mission,label="CDi",value=init.CDi,N_config=N_stages,col=col)
         df_mission = InputValidate.df_update_or_append(df=df_mission,label="LD",value=init.L_D,N_config=N_stages,col=col)
         df_mission = InputValidate.df_update_or_append(df=df_mission,label="CD",value=init.CD,N_config=N_stages,col=col)
         df_mission = InputValidate.df_update_or_append(df=df_mission,label="CD0_Estimate",value=init.CDv,N_config=N_stages,col=col)

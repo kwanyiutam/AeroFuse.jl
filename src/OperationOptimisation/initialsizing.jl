@@ -260,8 +260,10 @@ function fuel_ratio(;df_WS::DataFrame,WS_idx::Int,min_fuel_vel::DataFrame,df_air
         V_md = V_imd_MTOW*sqrt(cumulative_weight_fraction/σ)
 
         if col in min_fuel_stages
-            if (engine_type == "Jet" && stage == "Cruise") || (engine_type in ["Turboprop","Propeller"] && stage == "Loiter")
+            if (engine_type == "Jet" && stage == "Cruise")
                 V = V_md * 3^(1/4)
+            elseif (engine_type in ["Turboprop","Propeller"] && stage == "Loiter")
+                V = V_md / (3^(1/4))
             else
                 V = V_md
             end
@@ -282,7 +284,7 @@ function fuel_ratio(;df_WS::DataFrame,WS_idx::Int,min_fuel_vel::DataFrame,df_air
             endurance = df_mission[findfirst(==("Duration"),df_mission[:,1]),col]
         end
 
-        fraction = fuel_weight_fractions(stage=stage,engine_type=String(engine_type),V_md=V_md,V_bar=V_bar,LD_max=LD_max,SFC_cruise=SFC_cruise,SFC_loiter=SFC_loiter,endurance=endurance,range=range)
+        fraction = fuel_weight_fractions(stage=String(stage),engine_type=String(engine_type),V_md=V_md,V_bar=V_bar,LD_max=LD_max,SFC_cruise=SFC_cruise,SFC_loiter=SFC_loiter,endurance=endurance,range=range)
 
         if col == ncol(df_mission)-N_stages+1
             cumulative_weight_fraction = fraction

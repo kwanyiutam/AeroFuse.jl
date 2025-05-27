@@ -196,6 +196,10 @@ function cost_calc(;df_cost_model::DataFrame, df_aircraft::DataFrame, aircraft_i
     # Replace missing values with zero
     values = ustrip.(coalesce.(values, 0.0))
 
+    # Block time calculations
+    b_time = sum(df_mission[findfirst(==("Duration"),df_mission[:,1]),ncol(df_mission)-N_stages+1:ncol(df_mission)]) # Kept like this because inital sizing did not define block time
+    b_time = uconvert(u"hr", b_time)
+
     # If Aircraft Cost has to be specified
     if "Aircraft Cost (in Million)" in variables
         ac_cost_row = findfirst(value -> occursin(r"(?i)^Aircraft Cost",value),df_cost_model[:,1])
@@ -225,15 +229,21 @@ function cost_calc(;df_cost_model::DataFrame, df_aircraft::DataFrame, aircraft_i
         elseif logic == "FCREW"
             MTOW = values[findfirst(==("MTOW"), variables)]
             time = values[findfirst(==("Cruise Time"), variables)]
-            cost = (0.000326*MTOW+653)*time
+            cost = (0.000326*MTOW*2.20462+653.0)*time # NOTE: This is in lbs while input is in kg
         else
             throw(ArgumentError("Logic cannot be parsed, please double check!"))
+        end
+
+        # Multiply all values by the block time
+        cruise_multiply = df_cost_model[idx, "Cruise Multiply"]
+        if cruise_multiply == true
+            cost *= ustrip(b_time)
         end
 
         df_row_idx = findfirst(==(component), df_results[:,1])
         df_results[df_row_idx,"Cost (USD)"] = cost * df_cost_model[idx, "Factor"]
 
-        if occursin(r"(?i)^Aircraft Cost",component)
+        if occursin(r"(?i)^Aircraft Cost",component) && ("Aircraft Cost (in Million)" in variables)
             cost_idx = findfirst(==("Aircraft Cost (in Million)"),variables)
             values[cost_idx] = df_results[df_row_idx,"Cost (USD)"] / 10.0^6 # in million
         end
@@ -253,11 +263,9 @@ function cost_calc(;df_cost_model::DataFrame, df_aircraft::DataFrame, aircraft_i
         af_cost = ac_cost - eng_cost # Assume airframe cost = aircraft - engine
 
         # Calculate the time and utilisation
-        time = InputValidate.get_value(df_aircraft,"Block Time",aircraft_idx)
-        time = uconvert(u"hr", time)
-        U = utilisation_calc(time)
+        U = utilisation_calc(b_time)
 
-        depreciation = 0.9 * ustrip(time) * (ac_cost + 0.1*af_cost + 0.3*eng_cost) / (14 * ustrip(U))
+        depreciation = 0.9 * ustrip(b_time) * (ac_cost + 0.1*af_cost + 0.3*eng_cost) / (14 * ustrip(U))
         push!(df_results,["Depreciation", "Depreciation", depreciation])
 
         # Ignore aircraft and engine cost
@@ -267,6 +275,11 @@ function cost_calc(;df_cost_model::DataFrame, df_aircraft::DataFrame, aircraft_i
     end
 
     return (total_cost, df_results)
+end
+
+function operational_space_init(;df_ops,df_aircraft)
+
+    
 end
 
 end
