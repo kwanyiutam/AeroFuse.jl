@@ -126,7 +126,7 @@ end
     `WS_init` - A function which initialise the WS dataframe to store key information
 
 """
-function WS_init(;WS,velocity_list::DataFrame,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::DataFrame)
+function WS_init(;WS,design_param::DataFrame,velocity_list::DataFrame,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::DataFrame,df_payload::DataFrame,payload_idx::Int)
     # Create a Wing loading dataframe, filled with just WS for now
     df_WS = DataFrame(WS = WS)
     (ρ_0,_,_,_) = ISAdata(0*u"m")
@@ -137,6 +137,17 @@ function WS_init(;WS,velocity_list::DataFrame,df_aircraft::DataFrame,aircraft_id
         df_WS[!, velocity_list[i,"Design Parameter"]] = fill(0.0*vel_unit, length(WS))
     end
 
+    all_param = design_param[:,"Design Parameter"]
+    no_vel_param = setdiff(all_param,velocity_list[:,"Design Parameter"])
+
+    for i in no_vel_param
+        idx = findfirst(==(i),all_param)
+        value = InputValidate.get_design_values(design_param,i,df_aircraft,df_mission,df_payload)
+        df_WS[!, i] = fill(value, length(WS))
+    end
+
+    df_WS[!, "Aircraft Index"]  = fill(aircraft_idx, length(WS))
+    df_WS[!, "Payload Index"]  = fill(payload_idx, length(WS))
     df_WS[!, "MTOW"]  = fill(0.0*u"kg", length(WS))
     df_WS[!, "Empty Weight"]  = fill(0.0*u"kg", length(WS))
     df_WS[!, "Fuel Weight"]  = fill(0.0*u"kg", length(WS))
@@ -144,6 +155,7 @@ function WS_init(;WS,velocity_list::DataFrame,df_aircraft::DataFrame,aircraft_id
     df_WS[!, "Fuel Cost"]  = fill(0.0, length(WS))
     df_WS[!, "Cabin Crew Cost"]  = fill(0.0, length(WS))
     df_WS[!, "Flight Crew Cost"]  = fill(0.0, length(WS))
+    df_WS[!, "Depreciation Cost"]  = fill(0.0, length(WS))
 
     # Define key variables
     AR = df_aircraft[findfirst(==("Wing AR"),df_aircraft[:,1]),aircraft_idx]
@@ -235,13 +247,13 @@ function mission_design_flow(;design_param::DataFrame,velocity_list::DataFrame,d
         WS_max = ConstraintDiagram.get_max_WS(df_aircraft = df_aircraft, aircraft_idx = aircraft_idx,df_mission = df_mission)
 
         # Only need to optimise at WS_max, because that is where the minimum cost is likely at (Quick mode)
-        df_WS = WS_init(WS=[WS_max],velocity_list=velocity_list,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission)
+        df_WS = WS_init(WS=[WS_max],design_param=design_param,velocity_list=velocity_list,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,df_payload=df_payload,payload_idx=payload_idx)
         
         # Get the minimum cost velocity and their respective design
         (df_WS, df_mission) = InitialSizing.velocity_optimise_main(df_WS = df_WS,velocity_list = velocity_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,payload_idx=payload_idx,df_cost=df_cost)
 
         # Get the T/W ratio required
-        TW_max = ConstraintDiagram.quick_constraint(WS_max=WS_max,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
+        TW_max = ConstraintDiagram.quick_constraint(df_WS=df_WS,velocity_list=velocity_list,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
 
         # Initialise the aircraft design
         df_aircraft = update_design(WS_max = WS_max, TW_max = TW_max, df_aircraft = df_aircraft, N_aircraft = N_aircraft, aircraft_idx = aircraft_idx,df_mission=df_mission,N_stages=N_stages)
@@ -255,10 +267,43 @@ end
 
 
 """
+    `simple_mission_flow` - A function which runs the design workflow with just the basic conditions
+"""
+function simple_mission_flow(;design_param::DataFrame,velocity_list::DataFrame,df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,df_cost::DataFrame,df_save)
+    for payload_idx in (ncol(df_payload)-N_payload+1):ncol(df_payload)
+        (df_aircraft,df_mission,df_payload) = InitialSizing.update_init_design(df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx) 
+            
+        # Assume WS_max is restricted by landing!
+        WS_max = ConstraintDiagram.get_max_WS(df_aircraft = df_aircraft, aircraft_idx = aircraft_idx,df_mission = df_mission)
+
+        WS = LinRange(1*u"kg/m/s^2", 5000*u"kg/m/s^2", 500)
+
+        # Vary WS
+        df_WS = WS_init(WS=WS,design_param=design_param,velocity_list=velocity_list,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,df_payload=df_payload,payload_idx=payload_idx)
+        
+        # Get the minimum cost velocity and their respective design
+        (df_WS, df_mission) = InitialSizing.velocity_optimise_main(df_WS = df_WS,velocity_list = velocity_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,payload_idx=payload_idx,df_cost=df_cost)
+
+        # Get the T/W ratio required
+        df_WS = ConstraintDiagram.full_constraint(df_WS=df_WS,velocity_list=velocity_list,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
+
+        df_WS[!,"Landing WS_max"] .= WS_max
+
+        if isempty(df_save)
+            df_save = df_WS
+        else
+            df_save = vcat(df_save,df_WS)
+        end
+    end
+    
+    return df_save
+end
+
+"""
     `design_start` - A function which runs the design workflow
 
 """
-function design_start(;design_param::DataFrame,df_design::DataFrame,df_pert::DataFrame, df_aircraft::DataFrame,N_aircraft::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,df_cost::DataFrame,data_save::Vector{String})
+function design_start(;design_param::DataFrame,df_design::DataFrame,df_pert::DataFrame, df_aircraft::DataFrame,N_aircraft::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,df_cost::DataFrame,data_save::Vector{String} = [""],mode::String = "Full")
     # Get the list of design-specific parameters
     design_list = design_param[findall(==("Design"),design_param[:,:Type]),:]
 
@@ -273,17 +318,29 @@ function design_start(;design_param::DataFrame,df_design::DataFrame,df_pert::Dat
     # Define key variables needed for initial sizing
     df_aircraft = InitialSizing.define_aircraft_properties(df_aircraft=df_aircraft,N_aircraft=N_aircraft)
 
-    # Default entries
-    data_save_def = ["Aircraft Index", "Payload Index"]
-    data_save_def = vcat(data_save_def,design_param[:,"Design Parameter"],"Total Cost","Cost Breakdown","Wing Mesh","HT Mesh","VT Mesh","Fuselage Shape","Engine Shape")
-    data_save_def = vcat(data_save_def, data_save)
-    df_save = DataFrame(NamedTuple{Tuple(Symbol.(data_save_def))}(Tuple(Any[] for _ in data_save_def)))
+    if mode == "Full"
+        # Default entries
+        data_save_def = ["Aircraft Index", "Payload Index"]
+        data_save_def = vcat(data_save_def,design_param[:,"Design Parameter"],"Total Cost","Cost Breakdown","Wing Mesh","HT Mesh","VT Mesh","Fuselage Shape","Engine Shape")
+        data_save_def = vcat(data_save_def, data_save)
+
+        df_save = DataFrame(NamedTuple{Tuple(Symbol.(data_save_def))}(Tuple(Any[] for _ in data_save_def)))
+    else
+        df_save = []
+    end
 
     # For each aircraft
     for aircraft_idx in (ncol(df_aircraft)-N_aircraft+1):ncol(df_aircraft)
         if nrow(df_design) == 0
             # Directly run the mission design flow
-            df_save = mission_design_flow(design_param=design_param,df_pert=df_pert,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,df_cost=df_cost,df_save=df_save)
+            if mode == "Full"
+            # Run the mission design flow
+                df_save = mission_design_flow(design_param=design_param,velocity_list=velocity_list,df_pert=df_pert,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,df_cost=df_cost,df_save=df_save)
+            elseif mode == "Constraints"
+                df_save = simple_mission_flow(design_param=design_param,velocity_list=velocity_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,df_cost=df_cost,df_save=df_save)
+            else
+                throw(ArgumentError("Cannot understand the mode $mode within design_start function!"))
+            end
         else
             # For each specified design point
             for row in 1:nrow(df_design)
@@ -297,8 +354,14 @@ function design_start(;design_param::DataFrame,df_design::DataFrame,df_pert::Dat
                     (df_aircraft,df_mission,df_payload) = InputValidate.update_df_with_design(design_list=design_list,parameter=param_name,value=param_value,df_aircraft=df_aircraft,df_mission=df_mission,df_payload=df_payload)
                 end
 
+                if mode == "Full"
                 # Run the mission design flow
-                df_save = mission_design_flow(design_param=design_param,velocity_list=velocity_list,df_pert=df_pert,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,df_cost=df_cost,df_save=df_save)
+                    df_save = mission_design_flow(design_param=design_param,velocity_list=velocity_list,df_pert=df_pert,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,df_cost=df_cost,df_save=df_save)
+                elseif mode == "Constraints"
+                    df_save = simple_mission_flow(design_param=design_param,velocity_list=velocity_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,df_cost=df_cost,df_save=df_save)
+                else
+                    throw(ArgumentError("Cannot understand the mode $mode within design_start function!"))
+                end
             end
         end
     end

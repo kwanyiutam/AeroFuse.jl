@@ -2,8 +2,12 @@ using DataFrames
 using XLSX
 using Plots
 using Printf
+using LaTeXStrings
 
-df_data = DataFrame(XLSX.readtable("ConvergenceStudy.xlsx",1))
+plot_font = "Computer Modern"
+default(fontfamily=plot_font)
+
+df_data = DataFrame(XLSX.readtable("./Studies/MeshConvergence/ConvergenceStudy.xlsx",1))
 #print(df_data)
 cruise_range = 5000.0
 pax = 150
@@ -40,7 +44,7 @@ contourf!(
     levels=20,
     alpha=0.7,
     right_margin = 5Plots.mm,
-    colorbar_title="\n% Difference from Most Refined $metric_label"
+    colorbar_title= "\n % Difference from Most Refined "*L"\mathrm{C_{Di,cruise}}"
 )
 
 x_opt = 14
@@ -48,7 +52,7 @@ y_opt = 8
 x_opt_idx = findfirst(==(x_opt), df_plot_x)
 y_opt_idx = findfirst(==(y_opt), df_plot_y)
 metric_opt = round(df_plot_metric[y_opt_idx,x_opt_idx],sigdigits = 3)
-scatter!(p,[x_opt],[y_opt],label="Selected Point ($x_opt,$y_opt), error = $metric_opt%")
+scatter!(p,[x_opt],[y_opt],label="Selected Point ($x_opt,$y_opt), Error = $metric_opt%", markersize = 8)
 xlabel!(p,x[1])
 ylabel!(p,y[1])
 title!(p,"Mesh Convergence Study")

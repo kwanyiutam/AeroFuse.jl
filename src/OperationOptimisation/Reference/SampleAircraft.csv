@@ -1,7 +1,7 @@
 Assumptions,Units,Baseline Jet,Alternate Turboprop
 PlaneType,,Jet transport,Twin turboprop
 Regulations,,FAR25 (Commercial),FAR25 (Commercial)
-Number of Engines,,2,3
+Number of Engines,,2,2
 Engine Type,,Jet,Turboprop
 Engine Mounting Position,,Wing,Wing
 Engine Position from Fuselage Normalised by Engine Diameter,,2,2

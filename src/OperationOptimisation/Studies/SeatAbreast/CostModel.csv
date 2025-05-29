@@ -21,8 +21,8 @@ Landing Gear,Full_A;Full_B;Full_C;Full_D,"Maintenance, Landing Gear",SUM,TRUE,20
 Navigation,Full_A;Full_B;Full_C;Full_D,"Maintenance, Systems",SUM,TRUE,2013,11.491,,,,,-0.0039,,0.484,0.063,0.1164,0.0108,-0.2987,,,,,,,,,,
 APU,Full_A;Full_B;Full_C;Full_D,"Maintenance, Engine",SUM,TRUE,2013,8.0316,,,,,,0.7763,3.984,,,,,,,,,,,,,,
 Thrust reversers,Full_A;Full_B;Full_C;Full_D,"Maintenance, Engine",SUM,TRUE,2013,5.181,,,,,,-0.7572,,,-0.0084,,,,4.2443,0.0002,,,,,,,
-"Aircraft Cost, Large Size Aircraft",NOTEMPT,"Depreciation, Aircraft Cost",SUM,FALSE,2022,-239421000,,,,75,,,,,,105400,,,,-4892.8,2294,4470000,,,,-1448000,175330
-"Aircraft Cost, Mid-Size Aircraft",NOTEMPT,"Depreciation, Aircraft Cost",SUM,FALSE,2022,-100436000,,,,-1430,,,,,,312000,,,,-327.3728,627,,-5827000,,6700,-263000,4404000
-"Aircraft Cost, Small-Size Aircraft",NOTEMPT,"Depreciation, Aircraft Cost",SUM,FALSE,2022,-4787000,,,,-7220,,,,,,838000,,,,5030.688,1280,-2946000,,133018000,-6460,-626600,
-"Aircraft Cost, Personal Aircraft",NOTEMPT,"Depreciation, Aircraft Cost",SUM,FALSE,2022,-9426000,,,,1520,,,,,,-365000,,,,35.584,-16,1300000,,1324000,-1460,,
+"Aircraft Cost, Large Size Aircraft",TEMPNO,"Depreciation, Aircraft Cost",SUM,FALSE,2022,-239421000,,,,75,,,,,,105400,,,,-4892.8,2294,4470000,,,,-1448000,175330
+"Aircraft Cost, Mid-Size Aircraft",TEMPNO,"Depreciation, Aircraft Cost",SUM,FALSE,2022,-100436000,,,,-1430,,,,,,312000,,,,-327.3728,627,,-5827000,,6700,-263000,4404000
+"Aircraft Cost, Small-Size Aircraft",TEMPNO,"Depreciation, Aircraft Cost",SUM,FALSE,2022,-4787000,,,,-7220,,,,,,838000,,,,5030.688,1280,-2946000,,133018000,-6460,-626600,
+"Aircraft Cost, Personal Aircraft",TEMPNO,"Depreciation, Aircraft Cost",SUM,FALSE,2022,-9426000,,,,1520,,,,,,-365000,,,,35.584,-16,1300000,,1324000,-1460,,
 Engine Cost,Full_A;Full_B;Full_C;Full_D,"Depreciation, Engine Cost",PROD,FALSE,2010,145.2,,,,,,,,,,,,,1,1,,,,,,,

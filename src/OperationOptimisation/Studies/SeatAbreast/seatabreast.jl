@@ -7,15 +7,15 @@ using LaTeXStrings
 plot_font = "Computer Modern"
 default(fontfamily=plot_font)
 
-df_data = DataFrame(XLSX.readtable("SeatAbreastInvestigate.xlsx",1))
+df_data = DataFrame(XLSX.readtable("./Studies/SeatAbreast/SeatAbreastInvestigate.xlsx",1))
 #print(df_data)
 cruise_range = 3500.0
-pax = 400
+pax = 250
 after_body = 2.5
 seat_abreast = 6
 y = ["Cruise Range"]
 x = ["Seat Abreast"]
-metric = ["MTOW"] # Total Cost Without Depreciation
+metric = ["Total Cost"] # Total Cost Without Depreciation
 flip_annotate = true
 save = vcat(x,y,metric)
 
@@ -92,9 +92,9 @@ for i in eachindex(df_plot_y_unique)
 end
 title!("$pax Passengers")
 xlabel!("Seat Abreast")
-ylabel!("Total Cost Minus Depreciation\n(% Difference From Minimum)") # Minus Depreciation
+ylabel!("Total Cost Using Full Aircraft Cost Model\n(% Difference From Minimum)") # Minus Depreciation
 
-#savefig("MinusDepreciation_$pax.png")  # MinusDepreciation
+savefig("TotalCost_$pax.png")  # MinusDepreciation
 
 
 ### Plot for
@@ -147,6 +147,8 @@ end
 
 xlabel!("Number of Passengers")
 ylabel!("Cruise Range (km)")
-title!("Minimum MTOW Configurations") #"Minimum Cost Configurations (Without Depreciation)
+title!("Minimum Cost Configurations (Full Aircraft Model)") #"Minimum Cost Configurations (Without Depreciation)
 
-savefig("MinMTOWConfig.png")  # MinCostConfigNoDepreciate #MinCostConfigWithDepreciate #MinFuelConfig
+#savefig("MinCostConfig.png")  # MinCostConfigNoDepreciate #MinCostConfigWithDepreciate #MinFuelConfig
+
+p2

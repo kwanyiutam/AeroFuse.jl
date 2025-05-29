@@ -448,6 +448,13 @@ function velocity_optimise_main(;df_WS::DataFrame,velocity_list::DataFrame,df_ai
         # Final iteration with the minimum cost speed optimised
         (total_cost, df_cost_breakdown, df_aircraft, df_mission, df_payload) = basic_cost_calc(V_save, p, true)
 
+        # If total cost is not available, this meant MTOW did not converge!
+        if isnan(total_cost)
+            WS = df_WS[idx,1]
+            @warn "W/S of $WS does not converge! Not a realistic wing loading"
+            continue
+        end
+
         for vel in 1:nrow(velocity_list)
             name = velocity_list[vel, "Design Parameter"]
             row = velocity_list[vel, "Saved Row"]
@@ -464,6 +471,7 @@ function velocity_optimise_main(;df_WS::DataFrame,velocity_list::DataFrame,df_ai
         df_WS[idx, "Fuel Cost"]  = df_cost_breakdown[findfirst(==("Fuel"),df_cost_breakdown[:,1]),"Cost (USD)"]
         df_WS[idx, "Cabin Crew Cost"]  = df_cost_breakdown[findfirst(==("Cabin Crew"),df_cost_breakdown[:,1]),"Cost (USD)"]
         df_WS[idx, "Flight Crew Cost"]  = df_cost_breakdown[findfirst(==("Flight Crew"),df_cost_breakdown[:,1]),"Cost (USD)"]
+        df_WS[idx, "Depreciation Cost"]  = df_cost_breakdown[findfirst(==("Depreciation"),df_cost_breakdown[:,1]),"Cost (USD)"]
 
         α = 1
         for col in ncol(df_mission)-N_stages+1:ncol(df_mission)

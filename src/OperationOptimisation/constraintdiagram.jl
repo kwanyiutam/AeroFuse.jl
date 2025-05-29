@@ -20,7 +20,7 @@ include("inputvalidate.jl")
 
     return the TW (or PW)
 """
-function point_perf(;WS,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int)
+function point_perf(;df_WS,velocity_list::DataFrame,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int)
     # Mission information
     stage_row = findfirst(==("Stage"),df_mission[:,1])
     h_row = findfirst(==("Altitude"),df_mission[:,1])
@@ -31,6 +31,10 @@ function point_perf(;WS,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::Dat
     α_row = findfirst(==("α"),df_mission[:,1])
     β_row = findfirst(==("Engine Efficiency Scaling"),df_mission[:,1])
     n_row = findfirst(==("Load Factor"),df_mission[:,1])
+    WS = df_WS[:,1]
+
+    # These are the columns where the velocity should be taken from WS instead!
+    key_idx = velocity_list[:,"Saved Column"]
 
     # Aircraft information
     η_prop = InputValidate.get_value(df_aircraft,"Engine Propeller Efficiency",aircraft_idx)
@@ -56,13 +60,20 @@ function point_perf(;WS,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::Dat
         if stage in ["Climb","Cruise","Loiter","Descend"]
             # Get the needed information
             h = uconvert(u"m", df_mission[h_row,col])
-            V∞ = uconvert(u"m/s", df_mission[V∞_row,col])
             a_max = uconvert(u"m/s^2", df_mission[a_max_row,col])
             engines_available = df_mission[engine_avail_row,col]
             gradient = df_mission[gradient_row,col]
             α = df_mission[α_row,col]
             β = df_mission[β_row,col]
             n = df_mission[n_row,col]
+
+            if col in key_idx
+                col_name = velocity_list[findfirst(==(col),velocity_list[:,"Saved Column"]),"Design Parameter"]
+                V∞ = df_WS[!,col_name]
+                V∞ = uconvert.(u"m/s", V∞)
+            else
+                V∞ = uconvert(u"m/s", df_mission[V∞_row,col])
+            end
         
             ### Determine whether the input is power or thrust 
             if engine_type == "Jet"
@@ -87,11 +98,13 @@ function point_perf(;WS,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::Dat
             C_induc = (α .* n ^2 .* WS) ./ (0.5 .* ρ .* (V∞ .^ 2) .* pi .* AR .* e)
 
             TW[:,idx] = (α ./ β) .* (number_of_engines ./ engines_available) .* prop_constant .* (C_climb .+ C_speed .+ C_zerol .+ C_induc)
+            name = DataFrames.names(df_mission)[col]
+            df_WS[!,"TW $name"] = TW[:,idx]
         end
         idx += 1
     end
 
-    return TW
+    return (TW, df_WS)
 end
 
 """
@@ -135,10 +148,12 @@ end
 
     return the TW or PW ratios
 """
-function takeoff_distance(;WS,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::DataFrame)
+function takeoff_distance(;df_WS,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::DataFrame)
     # Find stages which are takeoff
     stage_idx = findfirst(==("Stage"),df_mission[:,1])
     col_idx = findall(==("Takeoff"), skipmissing(collect(df_mission[stage_idx, :])))
+
+    WS = df_WS[:,1]
     
     ### Physical properties
     (ρ_0,_,_,_) = ISAdata(0*u"m") # Determine density
@@ -277,10 +292,17 @@ function takeoff_distance(;WS,df_aircraft::DataFrame,aircraft_idx::Int,df_missio
             TW_BFL[:,idx] = TW_BFL_save
         end
 
+        # Save into df
+        name = DataFrames.names(df_mission)[col]
+        df_WS[!,"TW Ground Roll $name"] = TW_ground_roll[:,idx]
+        df_WS[!,"TW Climb AEO $name"] = TW_climb_AEO[:,idx]
+        df_WS[!,"TW Climb OEI $name"] = TW_climb_OEI[:,idx]
+        df_WS[!,"TW BFL $name"] = TW_BFL[:,idx]
+
         idx += 1
     end
 
-    return (TW_ground_roll,TW_climb_AEO,TW_climb_OEI,TW_BFL)
+    return (TW_ground_roll,TW_climb_AEO,TW_climb_OEI,TW_BFL,df_WS)
 end
 
 """
@@ -329,12 +351,12 @@ end
 
     return the TW
 """
-function quick_constraint(;WS_max,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int)
+function quick_constraint(;df_WS::DataFrame,velocity_list::DataFrame,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int)
     # Get the power/thrust from the conditions except for takeoff
-    TW = point_perf(WS=[WS_max],df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
+    (TW, _) = point_perf(df_WS=df_WS,velocity_list=velocity_list,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
 
     # Takeoff TW
-    (TW_ground_roll,TW_climb_AEO,TW_climb_OEI,TW_BFL) = takeoff_distance(WS=[WS_max],df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission)
+    (TW_ground_roll,TW_climb_AEO,TW_climb_OEI,TW_BFL) = takeoff_distance(df_WS=df_WS,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission)
 
     # Concat the TW data
     TW_to_max = vcat(TW_ground_roll,TW_climb_AEO,TW_climb_OEI)
@@ -343,7 +365,7 @@ function quick_constraint(;WS_max,df_aircraft::DataFrame,aircraft_idx::Int,df_mi
 
     # If BFL has to be considered, then concatenate it
     if BFL_consider == true
-        TW_to_max = vcat(TW_total,TW_BFL)
+        TW_to_max = vcat(TW_to_max,TW_BFL)
     end
 
     TW_to_max = TW_to_max[.!isnan.(TW_to_max)] # Remove all NaN
@@ -355,6 +377,22 @@ function quick_constraint(;WS_max,df_aircraft::DataFrame,aircraft_idx::Int,df_mi
 
     # Return the results from the search
     return TW_max
+end
+
+"""
+    `full_constraint` - A function to get all T/W
+
+    return the saved WS df
+"""
+function full_constraint(;df_WS::DataFrame,velocity_list::DataFrame,df_aircraft::DataFrame,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int)
+    # Get the power/thrust from the conditions except for takeoff
+    (_, df_WS) = point_perf(df_WS=df_WS,velocity_list=velocity_list,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
+
+    # Takeoff TW
+    (_,_,_,_,df_WS) = takeoff_distance(df_WS=df_WS,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission)
+
+    # Return the results from the search
+    return df_WS
 end
 
 end

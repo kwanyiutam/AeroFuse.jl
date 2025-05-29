@@ -257,7 +257,9 @@ function operator_compare(;df::DataFrame,rule::String,operator::String,row::Int,
             continue
         end
 
-        data = parse(Float64,df[row,col])
+        if eltype(data) != Float64
+            data = parse(Float64,data)
+        end
 
         assumption = df[row,"Assumptions"]
         config = DataFrames.names(df)[col]
@@ -306,7 +308,7 @@ function design_check(;df::DataFrame,design_param::DataFrame,location::String,N_
         # For each design type
         for idx in eachindex(types_regex)
             # Check whether the matching regex has been found
-            check = findall(value -> !ismissing(value) && occursin(Regex(types_regex[idx]),value),df[:,col])
+            check = findall(value -> !ismissing(value) && occursin(Regex(types_regex[idx]),value),string.(df[:,col]))
             
             # If some data was found
             if !isempty(check)
@@ -604,7 +606,17 @@ function convert_to_unitful(; df::DataFrame, N_config::Int)
                 # If the data is not missing
                 if !ismissing(df[row,col])
                     # Convert the data into the given variable type
-                    df[row,col] = tryparse(T,string(df[row,col]))
+                    data = tryparse(T,string(df[row,col]))
+
+                    if data === nothing
+                        if T == Int64
+                            data = Int64(df[row,col])
+                        elseif T == Bool
+                            data = lowercase(df[row,col]) == "true"
+                        end
+                    end
+
+                    df[row,col] = data
 
                     # If the unit is defined
                     if !ismissing(unit)

@@ -24,7 +24,7 @@ Wing CD0 Landing Penalty,,0.07
 Wing Airfoil,,NACA651412
 Wing Dihedral,degrees,2
 Wing Quarterchord Sweep,degrees,0
-Wing Taper Ratio,,PERT;Wing Taper Ratio;0;1
+Wing Taper Ratio,,0.45
 Wing Setting Angle,degrees,0
 Wing Twist Angle,degrees,0
 Wing LE Location (Relative to Fuselage Length),,0.45

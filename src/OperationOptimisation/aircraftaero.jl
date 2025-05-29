@@ -68,7 +68,6 @@ end
     return the forces
 """
 function get_forces(system, wing, HT, VT, fuse, eng_save, CD_upsweep)
-    print()
     # Evaluate aerodynamic coefficients
     CDi, CY, CL, Cl, Cm, Cn = nearfield(system)
 
@@ -234,9 +233,6 @@ function run_aero_analysis(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
     g = uconvert(u"m/s^2", 1*u"ge") # Gravitational acceleration constant
     n_span = InputValidate.get_value(df_aircraft,"Spanwise Discretisation",aircraft_idx) # Number of spanwise discretisation
     n_chord = InputValidate.get_value(df_aircraft,"Chordwise Discretisation",aircraft_idx) # Number of chordwise discretisation
-
-    print("Number of Span: $n_span")
-    print("Number of Chord: $n_chord")
 
     # Obtain wing position
     fuselage_length = uconvert(u"m", InputValidate.get_value(df_aircraft,"Fuselage Length",aircraft_idx))
@@ -410,6 +406,7 @@ function run_aero_analysis(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
             if col == cruise_condition[1]
                 df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CL_cruise",value=NaN,N_config=N_aircraft,col=aircraft_idx)
                 df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CDv_cruise",value=NaN,N_config=N_aircraft,col=aircraft_idx)
+                df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CDv_cruise_fuse",value=NaN,N_config=N_aircraft,col=aircraft_idx)
                 df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CDi_cruise",value=NaN,N_config=N_aircraft,col=aircraft_idx)
                 df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="LD_cruise",value=NaN,N_config=N_aircraft,col=aircraft_idx)
             end
@@ -429,6 +426,7 @@ function run_aero_analysis(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
         if col == cruise_condition[1]
             df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CL_cruise",value=init.CL,N_config=N_aircraft,col=aircraft_idx)
             df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CDv_cruise",value=init.CDv,N_config=N_aircraft,col=aircraft_idx)
+            df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CDv_cruise_fuse",value=init.CDv_F,N_config=N_aircraft,col=aircraft_idx)
             df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CDi_cruise",value=init.CDi,N_config=N_aircraft,col=aircraft_idx)
             df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="LD_cruise",value=init.L_D,N_config=N_aircraft,col=aircraft_idx)
         end
@@ -446,6 +444,7 @@ function run_aero_analysis(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="VT Mesh",value=VT_mesh,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Fuselage Shape",value=fuse,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Engine Shape",value=eng_save,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CD Upsweep",value=CD_upsweep,N_config=N_aircraft,col=aircraft_idx)
 
     return (df_aircraft, df_mission)
 end
