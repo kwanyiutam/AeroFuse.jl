@@ -47,11 +47,10 @@ function cost_variables(;variables::Vector{String}, units, df_aircraft::DataFram
         elseif var == "Fleet Size"
             value = 1 # Assume fleet size of 1
         elseif var == "Utilisation"
-            tb = InputValidate.get_value(df_aircraft,"Block Time",aircraft_idx)
+            tb = InputValidate.get_value(df_aircraft,"AFD",aircraft_idx)
             value = utilisation_calc(tb) / 365.25 # Utilisation per day, so divide by days
         elseif var == "AFD"
-            # For AFD, assume same as duration of flight time, BUT later can define
-            value = InputValidate.get_value(df_aircraft,"Block Time",aircraft_idx)
+            value = InputValidate.get_value(df_aircraft,"AFD",aircraft_idx)
         elseif var == "Aircraft Cost (in Million)"
             value = 0.0 # Define as 0 for now, should be replaced soon
         elseif var == "Age of Type of Aircraft"
@@ -275,103 +274,6 @@ function cost_calc(;df_cost_model::DataFrame, df_aircraft::DataFrame, aircraft_i
     end
 
     return (total_cost, df_results)
-end
-
-function operational_space_init(;df_ops,df_aircraft,aircraft_idx,df_cost)
-    ops_col_names = DataFrames.names(df_ops)
-
-    row_idx = []
-    col_idx = []
-
-    for idx in eachindex(ops_col_names)
-        
-    end
-
-    for ops_idx in 1:nrow(df_ops)
-    end
-
-    wing_mesh = InputValidate.get_value(df_aircraft,"Wing Mesh",aircraft_idx)
-    Sw = InputValidate.get_value(df_aircraft,"Wing Area",aircraft_idx)
-    HT_mesh = InputValidate.get_value(df_aircraft,"HT Mesh",aircraft_idx)
-    VT_mesh = InputValidate.get_value(df_aircraft,"VT Mesh",aircraft_idx)
-    fuse = InputValidate.get_value(df_aircraft,"Fuselage Shape",aircraft_idx)
-    eng_save = InputValidate.get_value(df_aircraft,"Engine Shape",aircraft_idx)
-    CD_upsweep = InputValidate.get_value(df_aircraft,"CD Upsweep",aircraft_idx)
-
-    refs = References(
-        speed     = ustrip(V),
-        area      = Sw,
-        density   = ustrip(ρ),
-        span      = span(wing_mesh),
-        chord     = mean_aerodynamic_chord(wing_mesh),
-        location  = mean_aerodynamic_center(wing_mesh)
-    )
-
-    # Get the aircraft's CD0
-    find_zero((-15,15)) do α
-        sys = make_case(α, wing_mesh, HT_mesh, VT_mesh, refs)
-        0.0 - get_forces(sys, wing_mesh, HT_mesh, VT_mesh, fuse, eng_save, CD_upsweep).CL
-    end
-
-
-    # Trapped fuel ratio (2%)
-    trapped_fuel = InputValidate.get_value(df_aircraft,"Trapped Fuel Ratio",aircraft_idx)
-
-    # Get maximum fuel weight and MTOW
-    fuel_weight = InputValidate.get_value(df_aircraft,"Fuel Weight",aircraft_idx)
-    MTOW = InputValidate.get_value(df_aircraft,"MTOW",aircraft_idx)
-    g = uconvert(u"m/s^2", 1*u"ge") # Gravitational acceleration constant
-    engine_type = InputValidate.get_value(df_aircraft,"Engine Type",aircraft_idx)
-
-
-    # Estimation for weight remaining
-    α = 1.0
-
-    for col in ncol(df_mission)-N_stages+1:ncol(df_mission)
-        stage = InputValidate.get_value(df_mission,"Stage",col)
-        V = uconvert(u"m/s", InputValidate.get_value(df_mission,"Velocity",col))
-
-        SFC_loiter = InputValidate.get_value(df_aircraft,"SFC_loiter",aircraft_idx)
-        SFC_cruise = InputValidate.get_value(df_aircraft,"SFC_cruise",aircraft_idx)
-
-        # SFC references
-        if engine_type != "Jet"
-            SFC_loiter = upreferred(SFC_loiter * V)
-            SFC_cruise = upreferred(SFC_cruise * V)
-        end
-
-        if stage == "Takeoff"
-            new_fraction = 0.97
-        elseif stage == "Climb"
-            new_fraction = 0.985
-        elseif stage == "Loiter"
-            LD = InputValidate.get_value(df_mission,"LD",col)
-            E = uconvert(u"s", InputValidate.get_value(df_mission,"Duration",col))
-            old_weight_fraction = InputValidate.get_value(df_mission,"Fuel Fraction",col)
-
-            new_fraction = exp(-(E*SFC_loiter*g) / LD)
-        elseif stage == "Cruise"
-            LD = InputValidate.get_value(df_mission,"LD",col)
-            R = uconvert(u"m", InputValidate.get_value(df_mission,"Distance",col))
-            old_weight_fraction = InputValidate.get_value(df_mission,"Fuel Fraction",col)
-
-            new_fraction = exp(-(R*SFC_cruise*g) / (LD * V))
-        else
-            new_fraction = 0.995
-        end
-
-        α *= new_fraction
-
-        df_mission = InputValidate.df_update_or_append(df=df_mission,label="α",value=α,N_config=N_stages,col=col)
-    end
-
-    # Set as NaN if the L/D did not return correctly
-    if ismissing(α)
-        α = NaN
-    end
-
-    new_fuel_weight = MTOW*(1.0 - α)*trapped_fuel
-
 end
 
 end

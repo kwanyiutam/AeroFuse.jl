@@ -3,6 +3,7 @@ module AircraftOptimisation
 # Initialise packages used
 using DataFrames
 using Unitful
+using Statistics
 
 # Include the InputValidate module
 include("inputvalidate.jl")
@@ -15,6 +16,9 @@ include("costmodel.jl")
 
 # Include the WeightEst module
 include("weightestimate.jl")
+
+# Include the MultiMission module
+include("multimission.jl")
 
 """
     `fuselage_sizing` - A function which sizes the fuselage to the appropriate size
@@ -199,7 +203,7 @@ end
 """
     `aircraft_design_flow` - A function which runs the design workflow
 """
-function aircraft_design_flow(;design_param::DataFrame,opt_list::DataFrame,df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,payload_idx::Int,df_cost_model::DataFrame,df_save::DataFrame,save_data::Bool=false)
+function aircraft_design_flow(;design_param::DataFrame,opt_list::DataFrame,df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,payload_idx::Int,df_cost_model::DataFrame,df_ops::DataFrame,df_save::DataFrame,save_data::Bool=false)
     # Deepcopy to ensure that the dataframe does not affect downstream designs
     df_aircraft = deepcopy(df_aircraft)
     df_mission = deepcopy(df_mission)
@@ -220,6 +224,9 @@ function aircraft_design_flow(;design_param::DataFrame,opt_list::DataFrame,df_ai
     # Calculate Cost
     (total_cost, df_cost_breakdown) = CostModel.cost_calc(df_cost_model = df_cost_model, df_aircraft = df_aircraft, aircraft_idx = aircraft_idx, df_mission = df_mission, N_stages = N_stages, df_payload = df_payload, payload_idx = payload_idx)
 
+    # Calculate cost for various operations
+    (average_cost, df_ops_results, df_breakdown_save, save_payload_range) = MultiMission.multi_mission_analysis(df_ops,df_aircraft,N_aircraft,aircraft_idx,df_payload,N_payload,payload_idx,df_mission,N_stages,df_cost_model)
+
     if save_data == true
         push!(df_save, fill(missing, ncol(df_save)))
         row_idx = nrow(df_save)
@@ -236,6 +243,15 @@ function aircraft_design_flow(;design_param::DataFrame,opt_list::DataFrame,df_ai
         # Add Cost Data
         df_save[row_idx,"Total Cost"] = total_cost
         df_save[row_idx,"Cost Breakdown"] = df_cost_breakdown
+
+        # Add key multi-mission data
+        df_save[row_idx, "Average Flight Cost"] = average_cost
+        df_save[row_idx, "Off-Mission Details"] = df_ops_results
+        df_save[row_idx, "Flight Cost Details"] = df_breakdown_save
+        df_save[row_idx, "Payload Range Diagram"] = save_payload_range
+
+
+        # Find all the remaining missing data
         idx_missing = findall(x -> x === missing, collect(df_save[row_idx,:]))
 
         # Add Remaining Data
@@ -265,7 +281,7 @@ end
 """
     `aircraft_optimisation_start` - A function which starts the optimisation process for design (with perturbation first)
 """
-function aircraft_optimisation_start(;design_param::DataFrame,df_pert::DataFrame,df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,payload_idx::Int,df_cost::DataFrame,df_save::DataFrame)
+function aircraft_optimisation_start(;design_param::DataFrame,df_pert::DataFrame,df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,payload_idx::Int,df_cost::DataFrame,df_ops::DataFrame,df_save::DataFrame)
     # List of perturbation / optimisation parameters
     pert_list = design_param[findall(==("Perturbations"),design_param[:,:Type]),:]
     opt_list = design_param[findall(==("Optimise"),design_param[:,:Type]),:]
@@ -280,7 +296,7 @@ function aircraft_optimisation_start(;design_param::DataFrame,df_pert::DataFrame
 
     if nrow(pert_list) == 0
         # Directly run the mission design flow
-        (_, _, df_save) = aircraft_design_flow(design_param=design_param,opt_list=opt_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx,df_cost_model=df_cost_model,df_save=df_save,save_data=true)
+        (_, _, df_save) = aircraft_design_flow(design_param=design_param,opt_list=opt_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx,df_cost_model=df_cost_model,df_ops=df_ops,df_save=df_save,save_data=true)
     else
         # For each specified design point
         for row in 1:nrow(df_pert)
@@ -295,7 +311,7 @@ function aircraft_optimisation_start(;design_param::DataFrame,df_pert::DataFrame
             end
 
             # Run the aircraft design evaluation flow
-            (_, _, df_save) = aircraft_design_flow(design_param=design_param,opt_list=opt_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx,df_cost_model=df_cost_model,df_save=df_save,save_data=true)
+            (_, _, df_save) = aircraft_design_flow(design_param=design_param,opt_list=opt_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx,df_cost_model=df_cost_model,df_ops=df_ops,df_save=df_save,save_data=true)
         end
     end
 

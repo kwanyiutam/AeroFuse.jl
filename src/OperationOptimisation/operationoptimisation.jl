@@ -30,6 +30,9 @@ include("constraintdiagram.jl")
 # include the AircraftOptimisation module
 include("aircraftoptimisation.jl")
 
+# include the MultiMission module
+include("multimission.jl")
+
 """
     `design_init` - A function which initiates the design variables
 
@@ -170,7 +173,7 @@ function WS_init(;WS,design_param::DataFrame,velocity_list::DataFrame,df_aircraf
     return df_WS
 end
 
-function update_design(;WS_max, TW_max, df_aircraft::DataFrame, N_aircraft::Int, aircraft_idx::Int,df_mission::DataFrame,N_stages::Int)
+function update_design(;WS_max, TW_max, df_aircraft::DataFrame, N_aircraft::Int, aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,df_ops::DataFrame)
     MTOW = InputValidate.get_value(df_aircraft,"MTOW",aircraft_idx)
     AR = InputValidate.get_value(df_aircraft,"Wing AR",aircraft_idx)
 
@@ -217,8 +220,9 @@ function update_design(;WS_max, TW_max, df_aircraft::DataFrame, N_aircraft::Int,
     CL_max_total = InputValidate.get_value(df_aircraft, "Wing CLmax", aircraft_idx) + InputValidate.get_value(df_aircraft, "Wing CLmax Landing Flaps", aircraft_idx)
     V_s_land = sqrt.((2 .* α_land .* WS_max) ./ (ρ .* CL_max_total))
 
-    # Calculate block time
-    block_time = sum(df_mission[findfirst(==("Duration"),df_mission[:,1]),ncol(df_mission)-N_stages+1:ncol(df_mission)])
+    # Calculate AFD
+    #block_time = sum(df_mission[findfirst(==("Duration"),df_mission[:,1]),ncol(df_mission)-N_stages+1:ncol(df_mission)])
+    AFD = MultiMission.AFD_calcs(df_ops,df_aircraft,aircraft_idx,df_mission,N_stages,df_payload)
 
     # Append to the aircraft data!
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="WS_max",value=WS_max,N_config=N_aircraft,col=aircraft_idx)
@@ -226,7 +230,7 @@ function update_design(;WS_max, TW_max, df_aircraft::DataFrame, N_aircraft::Int,
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Wing Span",value=bref,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Tmax",value=Tmax,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Cost Model",value=cost_model,N_config=N_aircraft,col=aircraft_idx)
-    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Block Time",value=block_time,N_config=N_aircraft,col=aircraft_idx)
+    df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="AFD",value=AFD,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Operating Velocity",value=V_max,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Operating Mach Number",value=M_max,N_config=N_aircraft,col=aircraft_idx)
     df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="Maximum Range",value=range_max,N_config=N_aircraft,col=aircraft_idx)
@@ -239,7 +243,7 @@ end
 """
     `mission_design_flow` - A function which runs the design workflow
 """
-function mission_design_flow(;design_param::DataFrame,velocity_list::DataFrame,df_pert::DataFrame,df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,df_cost::DataFrame,df_save::DataFrame)
+function mission_design_flow(;design_param::DataFrame,velocity_list::DataFrame,df_pert::DataFrame,df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,df_cost::DataFrame,df_ops::DataFrame,df_save::DataFrame)
     for payload_idx in (ncol(df_payload)-N_payload+1):ncol(df_payload)
         (df_aircraft,df_mission,df_payload) = InitialSizing.update_init_design(df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx) 
             
@@ -256,10 +260,10 @@ function mission_design_flow(;design_param::DataFrame,velocity_list::DataFrame,d
         TW_max = ConstraintDiagram.quick_constraint(df_WS=df_WS,velocity_list=velocity_list,df_aircraft=df_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages)
 
         # Initialise the aircraft design
-        df_aircraft = update_design(WS_max = WS_max, TW_max = TW_max, df_aircraft = df_aircraft, N_aircraft = N_aircraft, aircraft_idx = aircraft_idx,df_mission=df_mission,N_stages=N_stages)
+        df_aircraft = update_design(WS_max = WS_max, TW_max = TW_max, df_aircraft = df_aircraft, N_aircraft = N_aircraft, aircraft_idx = aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,df_ops=df_ops)
 
         # Run the aircraft optimisation / perturbations
-        df_save = AircraftOptimisation.aircraft_optimisation_start(design_param = design_param,df_pert = df_pert,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx,df_cost=df_cost,df_save=df_save)
+        df_save = AircraftOptimisation.aircraft_optimisation_start(design_param = design_param,df_pert = df_pert,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,payload_idx=payload_idx,df_cost=df_cost,df_ops=df_ops,df_save=df_save)
     end
     
     return df_save
@@ -303,7 +307,7 @@ end
     `design_start` - A function which runs the design workflow
 
 """
-function design_start(;design_param::DataFrame,df_design::DataFrame,df_pert::DataFrame, df_aircraft::DataFrame,N_aircraft::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,df_cost::DataFrame,data_save::Vector{String} = [""],mode::String = "Full")
+function design_start(;design_param::DataFrame,df_design::DataFrame,df_pert::DataFrame, df_aircraft::DataFrame,N_aircraft::Int,df_mission::DataFrame,N_stages::Int,df_payload::DataFrame,N_payload::Int,df_cost::DataFrame,df_ops::DataFrame = DataFrame(),data_save::Vector{String} = [""],mode::String = "Full")
     # Get the list of design-specific parameters
     design_list = design_param[findall(==("Design"),design_param[:,:Type]),:]
 
@@ -321,7 +325,7 @@ function design_start(;design_param::DataFrame,df_design::DataFrame,df_pert::Dat
     if mode == "Full"
         # Default entries
         data_save_def = ["Aircraft Index", "Payload Index"]
-        data_save_def = vcat(data_save_def,design_param[:,"Design Parameter"],"Total Cost","Cost Breakdown","Wing Mesh","HT Mesh","VT Mesh","Fuselage Shape","Engine Shape")
+        data_save_def = vcat(data_save_def,design_param[:,"Design Parameter"],"Total Cost","Cost Breakdown","Average Flight Cost","Off-Mission Details","Flight Cost Details","Payload Range Diagram","Wing Mesh","HT Mesh","VT Mesh","Fuselage Shape","Engine Shape")
         data_save_def = vcat(data_save_def, data_save)
 
         df_save = DataFrame(NamedTuple{Tuple(Symbol.(data_save_def))}(Tuple(Any[] for _ in data_save_def)))
@@ -356,7 +360,7 @@ function design_start(;design_param::DataFrame,df_design::DataFrame,df_pert::Dat
 
                 if mode == "Full"
                 # Run the mission design flow
-                    df_save = mission_design_flow(design_param=design_param,velocity_list=velocity_list,df_pert=df_pert,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,df_cost=df_cost,df_save=df_save)
+                    df_save = mission_design_flow(design_param=design_param,velocity_list=velocity_list,df_pert=df_pert,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,df_cost=df_cost,df_ops=df_ops,df_save=df_save)
                 elseif mode == "Constraints"
                     df_save = simple_mission_flow(design_param=design_param,velocity_list=velocity_list,df_aircraft=df_aircraft,N_aircraft=N_aircraft,aircraft_idx=aircraft_idx,df_mission=df_mission,N_stages=N_stages,df_payload=df_payload,N_payload=N_payload,df_cost=df_cost,df_save=df_save)
                 else

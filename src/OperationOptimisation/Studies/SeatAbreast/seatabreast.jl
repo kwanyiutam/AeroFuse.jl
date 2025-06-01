@@ -5,7 +5,7 @@ using Printf
 using LaTeXStrings
 
 plot_font = "Computer Modern"
-default(fontfamily=plot_font)
+default(fontfamily=plot_font, guidefont = font(14,plot_font), tickfont = font(12,plot_font), legendfont = font(8,plot_font), titlefont = font(16,plot_font), colorbar_titlefont = font(12,plot_font))
 
 df_data = DataFrame(XLSX.readtable("./Studies/SeatAbreast/SeatAbreastInvestigate.xlsx",1))
 #print(df_data)

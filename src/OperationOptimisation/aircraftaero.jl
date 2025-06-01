@@ -384,27 +384,11 @@ function run_aero_analysis(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
         catch e
             @error "ERROR: " exception=(e, catch_backtrace())
 
-            Plots.plot(
-                aspect_ratio = 1,
-                camera = (30, 30),
-                zlim = span(wing) .* (-0.5, 0.5),
-                size = (800, 600)
-            )
-            Plots.plot!(wing_mesh, label = "Wing")
-            Plots.plot!(HT_mesh, label = "HT")
-            Plots.plot!(VT_mesh, label = "VT")
-            Plots.plot!(fuse, label = "Fuselage")
-
-            for i in 1:N_engines
-                Plots.plot!(eng_save[i], label = "Engine $i")
-            end
-
-            savefig("SamplePlane.png") 
-
-            @warn "Case Failed! This row will bre returning NaN..."
+            @warn "Case Failed! This row will be returning NaN..."
 
             if col == cruise_condition[1]
                 df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CL_cruise",value=NaN,N_config=N_aircraft,col=aircraft_idx)
+                df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CD_cruise",value=NaN,N_config=N_aircraft,col=aircraft_idx)
                 df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CDv_cruise",value=NaN,N_config=N_aircraft,col=aircraft_idx)
                 df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CDv_cruise_fuse",value=NaN,N_config=N_aircraft,col=aircraft_idx)
                 df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CDi_cruise",value=NaN,N_config=N_aircraft,col=aircraft_idx)
@@ -425,6 +409,7 @@ function run_aero_analysis(;df_aircraft::DataFrame,N_aircraft::Int,aircraft_idx:
 
         if col == cruise_condition[1]
             df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CL_cruise",value=init.CL,N_config=N_aircraft,col=aircraft_idx)
+            df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CD_cruise",value=init.CD,N_config=N_aircraft,col=aircraft_idx)
             df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CDv_cruise",value=init.CDv,N_config=N_aircraft,col=aircraft_idx)
             df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CDv_cruise_fuse",value=init.CDv_F,N_config=N_aircraft,col=aircraft_idx)
             df_aircraft = InputValidate.df_update_or_append(df=df_aircraft,label="CDi_cruise",value=init.CDi,N_config=N_aircraft,col=aircraft_idx)
