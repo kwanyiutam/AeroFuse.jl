@@ -5,7 +5,7 @@ using Printf
 using LaTeXStrings
 
 plot_font = "Computer Modern"
-default(fontfamily=plot_font)
+default(fontfamily=plot_font, guidefont = font(14,plot_font), tickfont = font(12,plot_font), legendfont = font(8,plot_font), titlefont = font(16,plot_font), colorbar_titlefont = font(12,plot_font))
 
 df_data = DataFrame(XLSX.readtable("./Studies/MeshConvergence/ConvergenceStudy.xlsx",1))
 #print(df_data)
@@ -31,7 +31,7 @@ df_plot_metric = convert.(Float64,df_plot_metric)
 ref_metric = df_plot_metric[length(df_plot_metric)]
 df_plot_metric = (df_plot_metric .- ref_metric) ./ ref_metric * 100 # Percentage difference
 df_plot_metric = reshape(df_plot_metric,(length(df_plot_y),length(df_plot_x)))
-p = plot(dpi=1000)
+p = plot(dpi=500, legend = :outerbottom)
 
 metric_label = metric[1]
 

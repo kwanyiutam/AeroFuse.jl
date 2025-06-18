@@ -18,7 +18,7 @@ after_body = 2.5
 seat_abreast = 6
 y = ["Number of Passengers"]
 x = ["Cruise Range"]
-metric = ["Average Flight Cost"]
+metric = ["Wing Area"] #Average Flight Cost
 save = vcat(x,y,metric)
 
 df_plot = df_data
@@ -78,4 +78,4 @@ title!(p,"Average Flight Cost for Different Design Assumptions")
 
 p
 
-savefig("MissionDesignExplore.png") 
+#savefig("MissionDesignExplore.png") 

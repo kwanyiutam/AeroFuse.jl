@@ -6,7 +6,7 @@ using LaTeXStrings
 using Unitful
 
 plot_font = "Computer Modern"
-default(fontfamily=plot_font)
+default(fontfamily=plot_font, guidefont = font(14,plot_font), tickfont = font(12,plot_font), legendfont = font(8,plot_font), titlefont = font(16,plot_font), colorbar_titlefont = font(12,plot_font))
 
 df_data_min_fuel = DataFrame(XLSX.readtable("./Studies/ConstraintDiagram/ConstraintDiagram_MinFuel.xlsx",1))
 df_data_min_cost = DataFrame(XLSX.readtable("./Studies/ConstraintDiagram/ConstraintDiagram_MinCost.xlsx",1))
@@ -71,7 +71,7 @@ xlabel!(p_cost3, "Wing Loading "*L"\mathrm{kg/m/s^2}")
 ylabel!(p_cost3, "Costs Proportions")
 title!(p_cost3, "Cost Distribution (Minimum Cost)")
 
-savefig("CostDistributionMinCost_prop.png")
+#savefig("CostDistributionMinCost_prop.png")
 
 total_cost = df_data_min_fuel[:,"Total Cost"]
 p_cost4 = plot(dpi=300)
@@ -81,13 +81,13 @@ xlabel!(p_cost4, "Wing Loading "*L"\mathrm{kg/m/s^2}")
 ylabel!(p_cost4, "Costs Proportions")
 title!(p_cost4, "Cost Distribution (Minimum Fuel)")
 
-savefig("CostDistributionMinFuel_prop.png")
+#savefig("CostDistributionMinFuel_prop.png")
 
 
 df_data_min_fuel = df_data_min_fuel[:,save_data]
 df_data_min_cost = df_data_min_cost[:,save_data]
 
-p = plot(dpi=300)
+p = plot(dpi=300,top_margin = 5Plots.mm,right_marign = 2Plots.mm)
 
 plot!(p, df_data_min_fuel[:,"WS"], df_data_min_fuel[:,"Cruise Velocity"], label="Minimum Fuel", linewidth = 2)
 plot!(p, df_data_min_cost[:,"WS"], df_data_min_cost[:,"Cruise Velocity"], label="Minimum Cost", linewidth = 2)
@@ -100,6 +100,6 @@ p2 = twinx()
 bar_colors = [v ≥ 0 ? :green : :red for v in cost_diff]
 
 bar!(p2, df_data_min_fuel[:,"WS"], cost_diff, color=bar_colors, linecolor=:transparent, legend = false)
-ylabel!(p2, "Percentage Total Cost Improvement")
+ylabel!(p2, "Total Cost Percentage Improvement (%)")
 
-#savefig("VelocityCompare.png")  # MinCostConfigNoDepreciate #MinCostConfigWithDepreciate #MinFuelConfig
+savefig("VelocityCompare.png")  # MinCostConfigNoDepreciate #MinCostConfigWithDepreciate #MinFuelConfig

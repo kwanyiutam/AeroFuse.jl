@@ -5,7 +5,7 @@ using Printf
 using LaTeXStrings
 
 plot_font = "Computer Modern"
-default(fontfamily=plot_font, guidefont = font(14,plot_font), tickfont = font(12,plot_font), legendfont = font(8,plot_font), titlefont = font(16,plot_font), colorbar_titlefont = font(12,plot_font))
+default(fontfamily=plot_font, guidefont = font(14,plot_font), tickfont = font(12,plot_font), legendfont = font(10,plot_font), titlefont = font(16,plot_font), colorbar_titlefont = font(12,plot_font))
 
 df_data = DataFrame(XLSX.readtable("./Studies/SeatAbreast/SeatAbreastInvestigate.xlsx",1))
 #print(df_data)
@@ -37,6 +37,7 @@ df_plot_metric = convert.(Float64,df_plot_metric)
 p = plot(dpi=500, legend = false)
 metric_label = metric[1]
 y_name = y[1]
+save_range = [500.0, 2000.0, 4000.0, 10000.0]
 
 for i in eachindex(df_plot_y_unique)
     y_i = df_plot_y_unique[i]
@@ -48,7 +49,7 @@ for i in eachindex(df_plot_y_unique)
     z_i = (z_i .- min_z_i) ./ min_z_i * 100
 
     if flip_annotate == true
-        offset = 0.1
+        offset = 0.3
         j = 1
         global success = true
 
@@ -66,7 +67,7 @@ for i in eachindex(df_plot_y_unique)
             end
         end
     else
-        offset = -0.1
+        offset = -0.2
         j = num
         global success = true
 
@@ -85,16 +86,17 @@ for i in eachindex(df_plot_y_unique)
         end
     end
 
-    if success == true
-        plot!(p, x_i, z_i) #, linestyle = "Line&$y_i km&", show=true
-        annotate!(p,x_annotate+offset,z_annotate,text("$y_i km",7))
+    plot!(p, x_i, z_i) #, linestyle = "Line&$y_i km&", show=true
+
+    if success == true && y_i in save_range
+        annotate!(p,x_annotate+offset,z_annotate,text("$y_i km",10))
     end
 end
 title!("$pax Passengers")
 xlabel!("Seat Abreast")
-ylabel!("Total Cost Using Full Aircraft Cost Model\n(% Difference From Minimum)") # Minus Depreciation
+ylabel!("Total Cost Using Full Model\n(% Difference From Minimum)") # Minus Depreciation
 
-savefig("TotalCost_$pax.png")  # MinusDepreciation
+savefig("TotalCost_FullNew_$pax.png")  # MinusDepreciation
 
 
 ### Plot for
@@ -147,8 +149,8 @@ end
 
 xlabel!("Number of Passengers")
 ylabel!("Cruise Range (km)")
-title!("Minimum Cost Configurations (Full Aircraft Model)") #"Minimum Cost Configurations (Without Depreciation)
+title!("Minimum Cost Configurations (Full Model)") #"Minimum Cost Configurations (Without Depreciation)
 
-#savefig("MinCostConfig.png")  # MinCostConfigNoDepreciate #MinCostConfigWithDepreciate #MinFuelConfig
+savefig("MinCostConfig_FullNew.png")  # MinCostConfigNoDepreciate #MinCostConfigWithDepreciate #MinFuelConfig
 
 p2

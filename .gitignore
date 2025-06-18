@@ -416,3 +416,8 @@ src/OperationOptimisation/Studies/MultiMission/OptimalPlane_Front.png
 src/OperationOptimisation/Studies/MultiMission/OptimalPlane_Side.png
 src/OperationOptimisation/Studies/MultiMission/OptimalPlane_Top.png
 src/OperationOptimisation/Studies/SeatAbreast/~$SeatAbreastNew.xlsx
+*.png
+src/OperationOptimisation/Studies/SeatAbreast/SeatAbreastInvestigate_Updates.xlsx
+src/OperationOptimisation/Studies/SeatAbreast/SeatAbreastNew_Updates.xlsx
+src/OperationOptimisation/Studies/ConstraintDiagram/ConstraintDiagram_MinFuel.xlsx
+src/OperationOptimisation/Studies/ConstraintDiagram/ConstraintDiagram_MinCost.xlsx

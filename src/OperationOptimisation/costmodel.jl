@@ -57,6 +57,7 @@ function cost_variables(;variables::Vector{String}, units, df_aircraft::DataFram
             value = 0.0 *u"yr" # Assume new type of aircraft
         elseif var == "Number of Seats"
             # Assume same as number of passengers
+            # TODO: Number of seat should get a separate variable, because passengers number change for off-design missions
             value = InputValidate.get_value(df_payload,"Passengers",payload_idx)
         elseif var == "Average age"
             value = 0.0 *u"yr" # Assume new aircraft
